@@ -490,7 +490,7 @@ client.on('message', (channel, tags, message, self) => {
     const pts = applyMultipliers(ch, user, Math.round(gain('facile') * rarity.mult));
     const total = addPoints(ch, user, pts);
     client.say(channel, pick([
-      `🃏 ${user} tire le perk "${perk}" (${rarity.label}) dans son build ! +${pts} PdS (total : ${total})`,
+      `🃏 ${user} tire la perk "${perk}" (${rarity.label}) dans son build ! +${pts} PdS (total : ${total})`,
       `🃏 ${survivor} inspire ${user}, qui débloque "${perk}" (${rarity.label}). +${pts} PdS (total : ${total})`,
       `🃏 Une carte de build apparaît devant ${user} : "${perk}" (${rarity.label}) ! +${pts} PdS (total : ${total})`,
     ]));

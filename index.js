@@ -161,7 +161,7 @@ function onCmdCooldown(channel, user, cmd) {
   return false;
 }
 
-// ---------- ANTI-DOUBLON MULTI-CHAÎNES ----------
+// ---------- ANTI-DOUBLON MULTI-CHAÎNES (mécanisme d'origine, qui fonctionnait) ----------
 const crossChannelDedupe = new Map();
 const DEDUPE_WINDOW_MS = 4000;
 function isDuplicateAcrossChannels(user, cmdName) {

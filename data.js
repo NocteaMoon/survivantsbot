@@ -25,14 +25,22 @@ const SURVIVORS = [
   'Jill', 'Leon', 'Mikaela', 'Rebecca', 'Vittorio'
 ];
 
+// ---------- PERKS SURVIVANT (noms officiels français, doublon "Débrouillardise" retiré) ----------
 const PERKS = [
-  'Sprint Burst', 'Dead Hard', 'Adrenaline', 'Iron Will', 'Kindred',
-  'Borrowed Time', "We'll Make It", 'Self-Care', 'Décisif', 'Lithe',
-  'Ouvre-toi les yeux', 'Empathie', 'Ténacité', 'Rusé', 'Résilience',
-  'Aide-toi', 'Nulle part où fuir', 'Un pour tous', 'Ultime coup du sort',
-  "Esprit vif"
+  'Course Effrénée', 'De Front', 'Adrénaline', 'Volonté de Fer', 'Parenté',
+  'Sursis', 'Nous Y Arriverons', 'Auto-Traitement', 'Volonté de Vivre', 'Souple',
+  'Empathie', 'Ténacité', 'Fais tes Preuves', 'Déjà-Vu', 'Connaissances en Botanique',
+  'Conçu pour Durer', 'Débrouillardise', 'Lien', 'Indéfectible', 'Rapide et Silencieux',
+  'Poids Plume', 'Esprit Calme', 'Hyperconcentration', 'En Planque', 'Pour le Peuple',
+  "Intuition de l'Inspecteur", 'Objet de Fascination', 'Frisson', 'Prémonition',
+  'Parfaite Occasion', 'Distorsion', 'Assurance', 'Libération', 'Résistance',
+  'Effusion', 'Bras de Fer', 'Effondrement', 'Autodidacte',
+  'Nous Vivrons Éternellement', 'Veillée', 'Second Souffle', 'Par Tous les Moyens',
+  'Camaraderie', 'Force Intérieure', 'Solidarité', 'Technicien', 'Confidentiel',
+  'Suivi des Soins', 'Renaissance'
 ];
 
+// ---------- OBJETS + RARETÉS ----------
 const RARITIES = {
   commun:    { label: 'Commun',    weight: 40, mult: 1 },
   peuCommun: { label: 'Peu commun', weight: 27, mult: 1.3 },
@@ -42,8 +50,26 @@ const RARITIES = {
 };
 
 const ITEMS = [
-  'une lampe torche', 'une boîte à outils', 'un medkit', 'une carte',
-  'une clé', 'un pétard', 'un flacon de brume', 'un miroir brisé'
+  'une lampe torche', 'une lampe torche renforcée', 'une boîte à outils',
+  'une boîte à outils rouillée', 'un kit de premiers secours',
+  'un kit de premiers secours amélioré', 'une trousse de secours usée',
+  'une carte', 'une carte topographique déchirée', 'une clé', 'une clé squelette',
+  'une fiole de brume', 'une fiole de brume épaisse', 'un miroir brisé',
+  'un miroir fêlé', 'des gants chirurgicaux', 'un jeu de piles'
+];
+
+// ---------- OFFRANDES (noms officiels français) ----------
+const OFFERINGS = [
+  { name: 'le Laurier des Marais',      rarityLabel: 'Commun',     cost: 30,  mult: 1.2, duration: 2 * 60 * 1000 },
+  { name: "l'Amarante Craquante",       rarityLabel: 'Commun',     cost: 30,  mult: 1.2, duration: 2 * 60 * 1000 },
+  { name: "l'Œillet de Poète",          rarityLabel: 'Commun',     cost: 30,  mult: 1.2, duration: 2 * 60 * 1000 },
+  { name: 'la Pochette de Sel',         rarityLabel: 'Peu commun', cost: 50,  mult: 1.3, duration: 2 * 60 * 1000 },
+  { name: 'la Pièce Ternie',            rarityLabel: 'Peu commun', cost: 50,  mult: 1.3, duration: 2 * 60 * 1000 },
+  { name: "le Linceul de l'Union",      rarityLabel: 'Peu commun', cost: 50,  mult: 1.3, duration: 2 * 60 * 1000 },
+  { name: "l'Enveloppe Liée",           rarityLabel: 'Rare',       cost: 90,  mult: 1.5, duration: 3 * 60 * 1000 },
+  { name: 'la Statuette de Sel Noir',   rarityLabel: 'Rare',       cost: 90,  mult: 1.5, duration: 3 * 60 * 1000 },
+  { name: 'les Serpentins Sanglants',   rarityLabel: 'Très rare',  cost: 140, mult: 1.8, duration: 3 * 60 * 1000 },
+  { name: 'le Linceul du Lien',         rarityLabel: 'Très rare',  cost: 140, mult: 1.6, duration: 4 * 60 * 1000 },
 ];
 
 const EVENTS = [
@@ -61,27 +87,20 @@ const RANKS = [
   { min: 2500, name: 'Rang Iridescent' },
 ];
 
-const OFFERING_COST = 50;
-const OFFERING_MULT = 1.5;
-const OFFERING_DURATION = 3 * 60 * 1000;
-
 const BLEED_PENALTY = 0.6;
-
 const CONFRONTATION_STAKE_PERCENT = 0.2;
 const CONFRONTATION_STAKE_CAP = 100;
+const CONFRONTATION_BLESSURE_MALUS = 15;
 
 const WEEK_RESET_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 
-// ---------- BOUTIQUE (prix réajustés) ----------
+// ---------- BOUTIQUE ----------
 const SHOP = {
   titre: { label: 'Titre personnalisé affiché dans le classement', cost: 500 },
   skip:  { label: "Annule un cooldown en cours (précise la commande, ex: !acheter skip generateur)", cost: 200 },
-  vol:   { label: 'Vole 10 à 30 PdS à un viewer au hasard sur la chaîne', cost: 350 },
 };
 const LOTTERY_ENTRY_COST = 100;
 const LOTTERY_DURATION = 5 * 60 * 1000;
-const VOL_MIN = 10;
-const VOL_MAX = 30;
 
 const TIERS = {
   tresFacile:    [5, 15],
@@ -120,15 +139,16 @@ const COOLDOWNS = {
   boutique:       10,
   acheter:        15,
   loterie:        30,
+  moonwalk:       50,
 };
 
 const GLOBAL_COOLDOWN = 8;
 const EVENT_CHANCE = 0.06;
 
 module.exports = {
-  KILLERS, MAPS, SURVIVORS, PERKS, RARITIES, ITEMS, EVENTS, RANKS,
-  OFFERING_COST, OFFERING_MULT, OFFERING_DURATION, BLEED_PENALTY,
-  CONFRONTATION_STAKE_PERCENT, CONFRONTATION_STAKE_CAP, WEEK_RESET_INTERVAL_MS,
-  SHOP, LOTTERY_ENTRY_COST, LOTTERY_DURATION, VOL_MIN, VOL_MAX,
+  KILLERS, MAPS, SURVIVORS, PERKS, RARITIES, ITEMS, OFFERINGS, EVENTS, RANKS,
+  BLEED_PENALTY, CONFRONTATION_STAKE_PERCENT, CONFRONTATION_STAKE_CAP,
+  CONFRONTATION_BLESSURE_MALUS, WEEK_RESET_INTERVAL_MS,
+  SHOP, LOTTERY_ENTRY_COST, LOTTERY_DURATION,
   TIERS, LOSS_TIERS, COOLDOWNS, GLOBAL_COOLDOWN, EVENT_CHANCE
 };

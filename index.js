@@ -2,10 +2,10 @@ require('dotenv').config();
 const tmi = require('tmi.js');
 const fs = require('fs');
 const {
-  KILLERS, MAPS, SURVIVORS, PERKS, RARITIES, ITEMS, EVENTS, RANKS,
-  OFFERING_COST, OFFERING_MULT, OFFERING_DURATION, BLEED_PENALTY,
-  CONFRONTATION_STAKE_PERCENT, CONFRONTATION_STAKE_CAP, WEEK_RESET_INTERVAL_MS,
-  SHOP, LOTTERY_ENTRY_COST, LOTTERY_DURATION, VOL_MIN, VOL_MAX,
+  KILLERS, MAPS, SURVIVORS, PERKS, RARITIES, ITEMS, OFFERINGS, EVENTS, RANKS,
+  BLEED_PENALTY, CONFRONTATION_STAKE_PERCENT, CONFRONTATION_STAKE_CAP,
+  CONFRONTATION_BLESSURE_MALUS, WEEK_RESET_INTERVAL_MS,
+  SHOP, LOTTERY_ENTRY_COST, LOTTERY_DURATION,
   TIERS, LOSS_TIERS, COOLDOWNS, GLOBAL_COOLDOWN, EVENT_CHANCE
 } = require('./data.js');
 
@@ -58,6 +58,10 @@ const LEADERBOARD_META_FILE = './leaderboardMeta.json';
 let leaderboardMeta = fs.existsSync(LEADERBOARD_META_FILE) ? JSON.parse(fs.readFileSync(LEADERBOARD_META_FILE)) : {};
 function saveLeaderboardMeta() { fs.writeFileSync(LEADERBOARD_META_FILE, JSON.stringify(leaderboardMeta, null, 2)); }
 
+const LOTTERIES_FILE = './lotteries.json';
+let lotteriesData = fs.existsSync(LOTTERIES_FILE) ? JSON.parse(fs.readFileSync(LOTTERIES_FILE)) : {};
+function saveLotteries() { fs.writeFileSync(LOTTERIES_FILE, JSON.stringify(lotteriesData, null, 2)); }
+
 // ---------- HELPERS ----------
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -86,11 +90,17 @@ function isModOrBroadcaster(tags) {
   return false;
 }
 
-// ---------- BLESSURE ----------
+// ---------- BLESSURE (clés normalisées en minuscules pour éviter les soucis de casse) ----------
 const blessed = new Map();
-function isBlessed(ch, user) { return blessed.get(`${ch}-${user}`) === true; }
-function setBlessed(ch, user) { blessed.set(`${ch}-${user}`, true); }
-function healUser(ch, user) { blessed.delete(`${ch}-${user}`); }
+function isBlessed(ch, user) { return blessed.get(`${ch}-${user.toLowerCase()}`) === true; }
+function setBlessed(ch, user) { blessed.set(`${ch}-${user.toLowerCase()}`, true); }
+function healUser(ch, user) { blessed.delete(`${ch}-${user.toLowerCase()}`); }
+
+// ---------- ACCROCHÉ (prérequis pour !camping) ----------
+const hooked = new Map();
+function isHooked(ch, user) { return hooked.get(`${ch}-${user.toLowerCase()}`) === true; }
+function setHooked(ch, user) { hooked.set(`${ch}-${user.toLowerCase()}`, true); }
+function unhook(ch, user) { hooked.delete(`${ch}-${user.toLowerCase()}`); }
 
 // ---------- ÉVÉNEMENTS DE CHAÎNE ----------
 const activeEvents = new Map();
@@ -173,6 +183,7 @@ client.connect();
 client.on('connected', (addr, port) => {
   console.log(`✅ SurvivantsBot connecté à ${addr}:${port}`);
   checkWeeklyResets();
+  checkLotteries();
 });
 
 // ---------- CLASSEMENT HEBDOMADAIRE ----------
@@ -203,8 +214,27 @@ function checkWeeklyResets() {
 setInterval(checkWeeklyResets, 5 * 60 * 1000);
 
 // ---------- LOTERIE ----------
-const lotteries = new Map(); // ch -> { participants: Set, endsAt }
-function getLottery(ch) { return lotteries.get(ch); }
+function startLottery(ch) {
+  lotteriesData[ch] = { participants: [], endsAt: Date.now() + LOTTERY_DURATION };
+  saveLotteries();
+}
+function checkLotteries() {
+  Object.keys(lotteriesData).forEach(ch => {
+    const lot = lotteriesData[ch];
+    if (lot && Date.now() >= lot.endsAt) {
+      const channelFull = '#' + ch;
+      if (lot.participants.length > 0) {
+        const winner = pick(lot.participants);
+        const pot = lot.participants.length * LOTTERY_ENTRY_COST;
+        const total = addPoints(ch, winner, pot);
+        client.say(channelFull, `🎟️ Tirage de la loterie ! ${winner} remporte la cagnotte de ${pot} PdS (total : ${total}) !`);
+      }
+      delete lotteriesData[ch];
+      saveLotteries();
+    }
+  });
+}
+setInterval(checkLotteries, 30 * 1000);
 
 // ---------- COMMANDES ----------
 client.on('message', (channel, tags, message, self) => {
@@ -268,32 +298,103 @@ client.on('message', (channel, tags, message, self) => {
   }
 
   else if (msg === '!chase') {
-    const pts = applyMultipliers(ch, user, gain('difficile'));
-    const total = addPoints(ch, user, pts);
-    client.say(channel, pick([
-      `🏃 ${user} est pris en chasse par ${killer} sur ${map}... et sème son poursuivant ! +${pts} PdS (total : ${total})`,
-      `🏃 ${killer} charge ${user} sur ${map}, mais un juke bien placé sauve la mise ! +${pts} PdS (total : ${total})`,
-      `🏃 ${user} enchaîne les loops autour d'un générateur pour épuiser ${killer} sur ${map}. +${pts} PdS (total : ${total})`,
-      `🏃 Cœur battant, ${user} slalome entre les palettes de ${map} pour échapper à ${killer}. +${pts} PdS (total : ${total})`,
-      `🏃 ${survivor} distrait ${killer} pendant que ${user} s'échappe de justesse sur ${map}. +${pts} PdS (total : ${total})`,
-      `🏃 ${user} vault une fenêtre à la dernière seconde, ${killer} ratant son swing sur ${map}. +${pts} PdS (total : ${total})`,
-    ]));
+    const roll = rand(1, 100);
+    if (roll > 25) {
+      const pts = applyMultipliers(ch, user, gain('difficile'));
+      const total = addPoints(ch, user, pts);
+      client.say(channel, pick([
+        `🏃 ${user} est pris en chasse par ${killer} sur ${map}... et sème son poursuivant ! +${pts} PdS (total : ${total})`,
+        `🏃 ${killer} charge ${user} sur ${map}, mais un juke bien placé sauve la mise ! +${pts} PdS (total : ${total})`,
+        `🏃 ${user} enchaîne les loops autour d'un générateur pour épuiser ${killer} sur ${map}. +${pts} PdS (total : ${total})`,
+        `🏃 Cœur battant, ${user} slalome entre les palettes de ${map} pour échapper à ${killer}. +${pts} PdS (total : ${total})`,
+        `🏃 ${survivor} distrait ${killer} pendant que ${user} s'échappe de justesse sur ${map}. +${pts} PdS (total : ${total})`,
+        `🏃 ${user} vault une fenêtre à la dernière seconde, ${killer} ratant son swing sur ${map}. +${pts} PdS (total : ${total})`,
+      ]));
+    } else {
+      setHooked(ch, user);
+      const pts = applyMultipliers(ch, user, -loss('moyenne'));
+      const total = addPoints(ch, user, pts);
+      client.say(channel, pick([
+        `🏃 ${user} se fait rattraper par ${killer} sur ${map} et se retrouve accroché à un crochet... ${pts} PdS (total : ${total})`,
+        `🏃 Épuisé, ${user} finit par se faire plaquer par ${killer} sur ${map} et est suspendu au crochet le plus proche. ${pts} PdS (total : ${total})`,
+        `🏃 ${killer} referme la chasse sur ${user} au beau milieu de ${map} : direction le crochet. ${pts} PdS (total : ${total})`,
+      ]));
+    }
+  }
+
+  else if (msg === '!moonwalk') {
+    const distance = rand(3, 120);
+    const roll = rand(1, 100);
+
+    if (roll > 85) {
+      const pts = applyMultipliers(ch, user, Math.round(gain('exceptionnel') * (distance / 120)));
+      const total = addPoints(ch, user, pts);
+      client.say(channel, pick([
+        `🕺 ${user} moonwalk ${distance}m devant ${killer} sur ${map} sans jamais rompre le contact visuel... LÉGENDAIRE ! +${pts} PdS (total : ${total})`,
+        `🕺 ${distance}m de moonwalk pur devant ${killer}, ${user} nargue littéralement la Brume sur ${map}. +${pts} PdS (total : ${total})`,
+        `🕺 ${user} exécute un moonwalk parfait de ${distance}m sur ${map}, ${killer} en reste bouche bée. +${pts} PdS (total : ${total})`,
+        `🕺 ${distance}m plus tard, ${user} moonwalk toujours à travers ${map}, ${killer} a abandonné et regarde le spectacle. +${pts} PdS (total : ${total})`,
+        `🕺 Une performance de ${distance}m qui restera dans les annales de ${map}, même ${killer} applaudit intérieurement. +${pts} PdS (total : ${total})`,
+        `🕺 ${user} traverse ${distance}m de ${map} en moonwalk ininterrompu, un exploit que même ${survivor} n'ose pas croire. +${pts} PdS (total : ${total})`,
+      ]));
+    } else if (roll > 55) {
+      const pts = applyMultipliers(ch, user, Math.round(gain('moyen') * (distance / 120)));
+      const total = addPoints(ch, user, pts);
+      client.say(channel, pick([
+        `🕺 ${user} moonwalk ${distance}m devant ${killer} sur ${map}, personne n'y comprend rien mais ça marche. +${pts} PdS (total : ${total})`,
+        `🕺 ${survivor} filme ${user} en train de moonwalker ${distance}m face à ${killer} sur ${map}. +${pts} PdS (total : ${total})`,
+        `🕺 ${user} recule stylé sur ${distance}m à ${map}, ${killer} hésite à avancer. +${pts} PdS (total : ${total})`,
+        `🕺 ${distance}m de moonwalk correct, un peu essoufflé sur la fin, mais ${user} assure sur ${map}. +${pts} PdS (total : ${total})`,
+        `🕺 ${user} enchaîne ${distance}m de pas glissés sur ${map}, ${killer} ne sait plus s'il doit rire ou attaquer. +${pts} PdS (total : ${total})`,
+      ]));
+    } else if (roll > 25) {
+      const pts = applyMultipliers(ch, user, -loss('petite'));
+      const total = addPoints(ch, user, pts);
+      client.say(channel, pick([
+        `🕺 ${user} moonwalk tranquillement sur ${map}... jusqu'à percuter ${survivor} de plein fouet après ${distance}m. Fin de la choré. ${pts} PdS (total : ${total})`,
+        `🕺 En pleine trajectoire, ${survivor} se met accidentellement devant ${user} au bout de ${distance}m, moonwalk interrompu sur ${map}. ${pts} PdS (total : ${total})`,
+        `🕺 ${user} et ${survivor} se percutent en pleine chorégraphie après ${distance}m sur ${map}, moment gênant. ${pts} PdS (total : ${total})`,
+        `🕺 ${distance}m de moonwalk, puis ${user} trébuche sur une racine qui n'existait clairement pas avant sur ${map}. ${pts} PdS (total : ${total})`,
+        `🕺 Après ${distance}m, ${user} percute un mur invisible sur ${map} en pleine choré. Le public de ${survivor} est mort de rire. ${pts} PdS (total : ${total})`,
+      ]));
+    } else {
+      setBlessed(ch, user);
+      const pts = applyMultipliers(ch, user, -loss('grosse'));
+      const total = addPoints(ch, user, pts);
+      client.say(channel, pick([
+        `🕺 ${user} moonwalk avec trop de style sur ${map}... ${killer} en profite et frappe en pleine choré après ${distance}m. Tu es blessé ! ${pts} PdS (total : ${total})`,
+        `🕺 Concentré sur ses pas, ${user} ne voit pas ${killer} arriver après ${distance}m sur ${map}. Moonwalk fatal, tu es blessé ! ${pts} PdS (total : ${total})`,
+        `🕺 ${killer} n'apprécie pas le show : ${user} se fait frapper en pleine performance de ${distance}m sur ${map}. Tu es blessé ! ${pts} PdS (total : ${total})`,
+        `🕺 ${distance}m de gloire, puis ${killer} met fin au spectacle d'un coup bien placé sur ${map}. Tu es blessé ! ${pts} PdS (total : ${total})`,
+        `🕺 ${user} pousse le moonwalk jusqu'à ${distance}m, trop absorbé pour remarquer ${killer} juste derrière sur ${map}. Tu es blessé ! ${pts} PdS (total : ${total})`,
+      ]));
+    }
   }
 
   else if (msg.startsWith('!soigner')) {
     const parts = message.trim().split(' ');
     if (parts.length < 2) return;
     const target = parts[1].replace('@', '');
-    const pts = applyMultipliers(ch, user, gain('facile'));
-    addPoints(ch, user, pts);
-    const total = addPoints(ch, target, pts);
-    healUser(ch, target);
-    client.say(channel, pick([
-      `💉 ${user} soigne ${target}, blessé par ${killer} sur ${map}. Les deux gagnent +${pts} PdS !`,
-      `💉 À l'abri des regards de ${killer}, ${user} recoud les blessures de ${target} sur ${map}. +${pts} PdS chacun !`,
-      `💉 ${user} presse une compresse sur la plaie de ${target}, ${killer} n'étant jamais loin sur ${map}. +${pts} PdS chacun !`,
-      `💉 Dos à dos derrière un mur de ${map}, ${user} soigne ${target} en silence. +${pts} PdS chacun !`,
-    ]));
+    if (target.toLowerCase() === user.toLowerCase()) {
+      client.say(channel, `💉 ${user}, tu ne peux pas te soigner toi-même ! Demande de l'aide à un autre survivant.`);
+      return;
+    }
+    if (isBlessed(ch, target)) {
+      const pts = applyMultipliers(ch, user, gain('facile'));
+      addPoints(ch, user, pts);
+      const total = addPoints(ch, target, pts);
+      healUser(ch, target);
+      client.say(channel, pick([
+        `💉 ${user} soigne ${target}, blessé par ${killer} sur ${map}. Les deux gagnent +${pts} PdS !`,
+        `💉 À l'abri des regards de ${killer}, ${user} recoud les blessures de ${target} sur ${map}. +${pts} PdS chacun !`,
+        `💉 ${user} presse une compresse sur la plaie de ${target}, ${killer} n'étant jamais loin sur ${map}. +${pts} PdS chacun !`,
+        `💉 Dos à dos derrière un mur de ${map}, ${user} soigne ${target} en silence. +${pts} PdS chacun !`,
+      ]));
+    } else {
+      const pts = applyMultipliers(ch, user, gain('tresFacile'));
+      const total = addPoints(ch, user, pts);
+      client.say(channel, `💉 ${user} vérifie l'état de ${target}, mais il n'a aucune blessure à soigner pour l'instant. Petite pause sympa quand même ! +${pts} PdS (total : ${total})`);
+    }
   }
 
   else if (msg === '!skillcheck') {
@@ -332,7 +433,12 @@ client.on('message', (channel, tags, message, self) => {
   }
 
   else if (msg === '!camping') {
+    if (!isHooked(ch, user)) {
+      client.say(channel, `🔦 ${user}, tu dois d'abord te faire accrocher (rate un !chase) avant de pouvoir être campé !`);
+      return;
+    }
     setBlessed(ch, user);
+    unhook(ch, user);
     const s = getStats(ch, user); s.campingSubis++; saveStats();
     const pts = applyMultipliers(ch, user, -loss('grosse'));
     const total = addPoints(ch, user, pts);
@@ -360,18 +466,21 @@ client.on('message', (channel, tags, message, self) => {
 
   else if (msg === '!offrande') {
     const currentTotal = getTotal(ch, user);
-    if (currentTotal < OFFERING_COST) {
-      client.say(channel, `🕯️ ${user}, il te faut au moins ${OFFERING_COST} PdS pour brûler une offrande (tu en as ${currentTotal}).`);
-      return;
-    }
     const key = `${ch}-${user}`;
     if (personalBuffs.has(key) && Date.now() < personalBuffs.get(key).endsAt) {
       client.say(channel, `🕯️ ${user}, une offrande est déjà active pour toi !`);
       return;
     }
-    addPoints(ch, user, -OFFERING_COST);
-    personalBuffs.set(key, { mult: OFFERING_MULT, endsAt: Date.now() + OFFERING_DURATION });
-    client.say(channel, `🕯️ ${user} brûle une offrande avant d'entrer dans la brume... Gains boostés (x${OFFERING_MULT}) pendant ${Math.round(OFFERING_DURATION / 60000)} min ! (-${OFFERING_COST} PdS)`);
+    const affordable = OFFERINGS.filter(o => o.cost <= currentTotal);
+    if (affordable.length === 0) {
+      const cheapest = OFFERINGS.reduce((a, b) => a.cost < b.cost ? a : b);
+      client.say(channel, `🕯️ ${user}, il te faut au moins ${cheapest.cost} PdS pour brûler une offrande (tu en as ${currentTotal}).`);
+      return;
+    }
+    const offering = pick(affordable);
+    addPoints(ch, user, -offering.cost);
+    personalBuffs.set(key, { mult: offering.mult, endsAt: Date.now() + offering.duration });
+    client.say(channel, `🕯️ ${user} brûle ${offering.name} (${offering.rarityLabel}) avant d'entrer dans la brume... Gains boostés (x${offering.mult}) pendant ${Math.round(offering.duration / 60000)} min ! (-${offering.cost} PdS)`);
   }
 
   else if (msg === '!perk') {
@@ -398,8 +507,8 @@ client.on('message', (channel, tags, message, self) => {
     if (parts.length < 2) { client.say(channel, `⚔️ Utilise !confrontation @pseudo pour défier quelqu'un !`); return; }
     const target = parts[1].replace('@', '');
     if (target.toLowerCase() === user.toLowerCase()) { client.say(channel, `⚔️ ${user}, tu ne peux pas te défier toi-même !`); return; }
-    const userRoll = rand(1, 100);
-    const targetRoll = rand(1, 100);
+    let userRoll = rand(1, 100) - (isBlessed(ch, user) ? CONFRONTATION_BLESSURE_MALUS : 0);
+    let targetRoll = rand(1, 100) - (isBlessed(ch, target) ? CONFRONTATION_BLESSURE_MALUS : 0);
     if (userRoll === targetRoll) {
       client.say(channel, `⚔️ ${user} affronte ${target} face à ${killer} sur ${map}... égalité parfaite, personne ne gagne !`);
       return;
@@ -427,7 +536,7 @@ client.on('message', (channel, tags, message, self) => {
   else if (msg === '!stats') {
     const s = getStats(ch, user);
     const rarityText = s.meilleureRareteLabel || 'aucun trouvé';
-    client.say(channel, `📊 ${user} — Échappées : ${s.echappes} | Fois campé : ${s.campingSubis} | Meilleur loot : ${rarityText} | Duels gagnés : ${s.duelsGagnes}`);
+    client.say(channel, `📊 ${user} — Échappées : ${s.echappes} | Fois campé : ${s.campingSubis} | Meilleur loot : ${rarityText} | Confrontations gagnées : ${s.duelsGagnes}`);
   }
 
   else if (msg === '!classement') {
@@ -511,53 +620,26 @@ client.on('message', (channel, tags, message, self) => {
       cmdCd.delete(cdKey);
       client.say(channel, `🛒 ${user} débloque instantanément !${targetCmd} ! (-${item.cost} PdS)`);
     }
-
-    else if (key === 'vol') {
-      const chPoints = points[ch] || {};
-      const candidates = Object.keys(chPoints).filter(u => u !== user && chPoints[u] > 0);
-      if (candidates.length === 0) {
-        client.say(channel, `🛒 ${user}, personne à voler pour l'instant !`);
-        return;
-      }
-      const victim = pick(candidates);
-      const stolen = Math.min(rand(VOL_MIN, VOL_MAX), chPoints[victim]);
-      addPoints(ch, user, -item.cost);
-      addPoints(ch, victim, -stolen);
-      const total = addPoints(ch, user, stolen);
-      client.say(channel, `🛒 ${user} soudoie l'Entité pour voler ${stolen} PdS à ${victim} ! (total : ${total}, coût : ${item.cost} PdS)`);
-    }
   }
 
   else if (msg === '!loterie') {
-    let lot = lotteries.get(ch);
     const currentTotal = getTotal(ch, user);
     if (currentTotal < LOTTERY_ENTRY_COST) {
       client.say(channel, `🎟️ ${user}, il te faut ${LOTTERY_ENTRY_COST} PdS pour participer (tu en as ${currentTotal}).`);
       return;
     }
-    if (!lot) {
-      lot = { participants: new Set(), endsAt: Date.now() + LOTTERY_DURATION };
-      lotteries.set(ch, lot);
+    if (!lotteriesData[ch]) {
+      startLottery(ch);
       client.say(channel, `🎟️ Une loterie démarre sur la chaîne ! Tape !loterie pour rejoindre (${LOTTERY_ENTRY_COST} PdS), tirage dans ${Math.round(LOTTERY_DURATION / 60000)} min.`);
-      setTimeout(() => {
-        const currentLot = lotteries.get(ch);
-        if (!currentLot) return;
-        const players = Array.from(currentLot.participants);
-        lotteries.delete(ch);
-        if (players.length === 0) return;
-        const winner = pick(players);
-        const pot = players.length * LOTTERY_ENTRY_COST;
-        const total = addPoints(ch, winner, pot);
-        client.say('#' + ch, `🎟️ Tirage de la loterie ! ${winner} remporte la cagnotte de ${pot} PdS (total : ${total}) !`);
-      }, LOTTERY_DURATION);
     }
-    if (lot.participants.has(user)) {
+    if (lotteriesData[ch].participants.includes(user)) {
       client.say(channel, `🎟️ ${user}, tu es déjà inscrit à cette loterie !`);
       return;
     }
     addPoints(ch, user, -LOTTERY_ENTRY_COST);
-    lot.participants.add(user);
-    client.say(channel, `🎟️ ${user} rejoint la loterie ! (${lot.participants.size} participant(s))`);
+    lotteriesData[ch].participants.push(user);
+    saveLotteries();
+    client.say(channel, `🎟️ ${user} rejoint la loterie ! (${lotteriesData[ch].participants.length} participant(s))`);
   }
 
   else if (msg === '!commandes') {

@@ -90,17 +90,11 @@ function isModOrBroadcaster(tags) {
   return false;
 }
 
-// ---------- BLESSURE (clés normalisées en minuscules pour éviter les soucis de casse) ----------
+// ---------- BLESSURE ----------
 const blessed = new Map();
-function isBlessed(ch, user) { return blessed.get(`${ch}-${user.toLowerCase()}`) === true; }
-function setBlessed(ch, user) { blessed.set(`${ch}-${user.toLowerCase()}`, true); }
-function healUser(ch, user) { blessed.delete(`${ch}-${user.toLowerCase()}`); }
-
-// ---------- ACCROCHÉ (prérequis pour !camping) ----------
-const hooked = new Map();
-function isHooked(ch, user) { return hooked.get(`${ch}-${user.toLowerCase()}`) === true; }
-function setHooked(ch, user) { hooked.set(`${ch}-${user.toLowerCase()}`, true); }
-function unhook(ch, user) { hooked.delete(`${ch}-${user.toLowerCase()}`); }
+function isBlessed(ch, user) { return blessed.get(`${ch}-${user}`) === true; }
+function setBlessed(ch, user) { blessed.set(`${ch}-${user}`, true); }
+function healUser(ch, user) { blessed.delete(`${ch}-${user}`); }
 
 // ---------- ÉVÉNEMENTS DE CHAÎNE ----------
 const activeEvents = new Map();
@@ -161,7 +155,7 @@ function onCmdCooldown(channel, user, cmd) {
   return false;
 }
 
-// ---------- ANTI-DOUBLON MULTI-CHAÎNES (mécanisme d'origine, qui fonctionnait) ----------
+// ---------- ANTI-DOUBLON MULTI-CHAÎNES ----------
 const crossChannelDedupe = new Map();
 const DEDUPE_WINDOW_MS = 4000;
 function isDuplicateAcrossChannels(user, cmdName) {
@@ -259,13 +253,13 @@ client.on('message', (channel, tags, message, self) => {
     const pts = applyMultipliers(ch, user, gain('moyen'));
     const total = addPoints(ch, user, pts);
     client.say(channel, pick([
-      `⚙️ ${user} se connecte à un générateur sur ${map}, tandis que ${killer} patrouille au loin. Réparation terminée ! +${pts} PdS (total : ${total})`,
-      `⚙️ Sur ${map}, ${user} répare un générateur en retenant son souffle, ${killer} passant à quelques mètres. +${pts} PdS (total : ${total})`,
-      `⚙️ ${user} termine un générateur juste avant que ${killer} n'apparaisse à l'horizon de ${map} ! +${pts} PdS (total : ${total})`,
+      `⚙️ ${user} se connecte à un générateur sur ${map}, tandis que ${killer.subject} patrouille au loin. Réparation terminée ! +${pts} PdS (total : ${total})`,
+      `⚙️ Sur ${map}, ${user} répare un générateur en retenant son souffle, ${killer.subject} passant à quelques mètres. +${pts} PdS (total : ${total})`,
+      `⚙️ ${user} termine un générateur juste avant que ${killer.subject} n'apparaisse à l'horizon de ${map} ! +${pts} PdS (total : ${total})`,
       `⚙️ ${survivor} aide ${user} à finir ce générateur de ${map} en un temps record. +${pts} PdS (total : ${total})`,
       `⚙️ ${user} sursaute à chaque bruit sur ${map}, mais le générateur crache enfin ses dernières étincelles. +${pts} PdS (total : ${total})`,
       `⚙️ Concentré malgré les cris au loin, ${user} boucle la réparation sur ${map}. +${pts} PdS (total : ${total})`,
-      `⚙️ ${user} et ${survivor} se relaient sur ce générateur de ${map}, ${killer} rôdant sans les voir. +${pts} PdS (total : ${total})`,
+      `⚙️ ${user} et ${survivor} se relaient sur ce générateur de ${map}, ${killer.subject} rôdant sans les voir. +${pts} PdS (total : ${total})`,
       `⚙️ Un bruit de terreur retentit au loin sur ${map}, mais ${user} garde son sang-froid et termine le générateur. +${pts} PdS (total : ${total})`,
     ]));
   }
@@ -279,7 +273,7 @@ client.on('message', (channel, tags, message, self) => {
     client.say(channel, pick([
       `📦 ${user} fouille un coffre sur ${map} et trouve ${item} (${rarity.label}) ! +${pts} PdS (total : ${total})`,
       `📦 Dans un coin sombre de ${map}, ${user} déniche ${item} (${rarity.label}) au fond d'un coffre poussiéreux. +${pts} PdS (total : ${total})`,
-      `📦 ${user} force un coffre rouillé pendant que ${killer} rôde ailleurs sur ${map} : ${item} (${rarity.label}) ! +${pts} PdS (total : ${total})`,
+      `📦 ${user} force un coffre rouillé pendant que ${killer.subject} rôde ailleurs sur ${map} : ${item} (${rarity.label}) ! +${pts} PdS (total : ${total})`,
       `📦 ${user} et ${survivor} se partagent la fouille d'un coffre sur ${map}, qui contenait ${item} (${rarity.label}). +${pts} PdS (total : ${total})`,
       `📦 Un grincement inquiétant, mais ${user} garde son calme et récupère ${item} (${rarity.label}) sur ${map}. +${pts} PdS (total : ${total})`,
     ]));
@@ -290,104 +284,39 @@ client.on('message', (channel, tags, message, self) => {
     const total = addPoints(ch, user, pts);
     client.say(channel, pick([
       `🕯️ ${user} repère un totem hexagonal maudit sur ${map} et l'éteint d'un geste sûr. +${pts} PdS (total : ${total})`,
-      `🕯️ Malgré la malédiction de ${killer}, ${user} nettoie un totem sur ${map}. +${pts} PdS (total : ${total})`,
-      `🕯️ ${user} détruit un totem hex caché dans les buissons de ${map}, brisant une partie du pouvoir de ${killer}. +${pts} PdS (total : ${total})`,
+      `🕯️ Malgré la malédiction ${killer.de}, ${user} nettoie un totem sur ${map}. +${pts} PdS (total : ${total})`,
+      `🕯️ ${user} détruit un totem hex caché dans les buissons de ${map}, brisant une partie du pouvoir ${killer.de}. +${pts} PdS (total : ${total})`,
       `🕯️ Guidé par ${survivor}, ${user} localise et éteint un totem maudit sur ${map}. +${pts} PdS (total : ${total})`,
       `🕯️ La flamme du totem vacille puis s'éteint sous les mains de ${user}, quelque part sur ${map}. +${pts} PdS (total : ${total})`,
     ]));
   }
 
   else if (msg === '!chase') {
-    const roll = rand(1, 100);
-    if (roll > 25) {
-      const pts = applyMultipliers(ch, user, gain('difficile'));
-      const total = addPoints(ch, user, pts);
-      client.say(channel, pick([
-        `🏃 ${user} est pris en chasse par ${killer} sur ${map}... et sème son poursuivant ! +${pts} PdS (total : ${total})`,
-        `🏃 ${killer} charge ${user} sur ${map}, mais un juke bien placé sauve la mise ! +${pts} PdS (total : ${total})`,
-        `🏃 ${user} enchaîne les loops autour d'un générateur pour épuiser ${killer} sur ${map}. +${pts} PdS (total : ${total})`,
-        `🏃 Cœur battant, ${user} slalome entre les palettes de ${map} pour échapper à ${killer}. +${pts} PdS (total : ${total})`,
-        `🏃 ${survivor} distrait ${killer} pendant que ${user} s'échappe de justesse sur ${map}. +${pts} PdS (total : ${total})`,
-        `🏃 ${user} vault une fenêtre à la dernière seconde, ${killer} ratant son swing sur ${map}. +${pts} PdS (total : ${total})`,
-      ]));
-    } else {
-      setHooked(ch, user);
-      const pts = applyMultipliers(ch, user, -loss('moyenne'));
-      const total = addPoints(ch, user, pts);
-      client.say(channel, pick([
-        `🏃 ${user} se fait rattraper par ${killer} sur ${map} et se retrouve accroché à un crochet... ${pts} PdS (total : ${total})`,
-        `🏃 Épuisé, ${user} finit par se faire plaquer par ${killer} sur ${map} et est suspendu au crochet le plus proche. ${pts} PdS (total : ${total})`,
-        `🏃 ${killer} referme la chasse sur ${user} au beau milieu de ${map} : direction le crochet. ${pts} PdS (total : ${total})`,
-      ]));
-    }
-  }
-
-  else if (msg === '!moonwalk') {
-    const distance = rand(3, 120);
-    const roll = rand(1, 100);
-
-    if (roll > 85) {
-      const pts = applyMultipliers(ch, user, Math.round(gain('exceptionnel') * (distance / 120)));
-      const total = addPoints(ch, user, pts);
-      client.say(channel, pick([
-        `🕺 ${user} moonwalk ${distance}m devant ${killer} sur ${map} sans jamais rompre le contact visuel... LÉGENDAIRE ! +${pts} PdS (total : ${total})`,
-        `🕺 ${distance}m de moonwalk pur devant ${killer}, ${user} nargue littéralement la Brume sur ${map}. +${pts} PdS (total : ${total})`,
-        `🕺 ${user} exécute un moonwalk parfait de ${distance}m sur ${map}, ${killer} en reste bouche bée. +${pts} PdS (total : ${total})`,
-        `🕺 ${distance}m plus tard, ${user} moonwalk toujours à travers ${map}, ${killer} a abandonné et regarde le spectacle. +${pts} PdS (total : ${total})`,
-        `🕺 Une performance de ${distance}m qui restera dans les annales de ${map}, même ${killer} applaudit intérieurement. +${pts} PdS (total : ${total})`,
-        `🕺 ${user} traverse ${distance}m de ${map} en moonwalk ininterrompu, un exploit que même ${survivor} n'ose pas croire. +${pts} PdS (total : ${total})`,
-      ]));
-    } else if (roll > 55) {
-      const pts = applyMultipliers(ch, user, Math.round(gain('moyen') * (distance / 120)));
-      const total = addPoints(ch, user, pts);
-      client.say(channel, pick([
-        `🕺 ${user} moonwalk ${distance}m devant ${killer} sur ${map}, personne n'y comprend rien mais ça marche. +${pts} PdS (total : ${total})`,
-        `🕺 ${survivor} filme ${user} en train de moonwalker ${distance}m face à ${killer} sur ${map}. +${pts} PdS (total : ${total})`,
-        `🕺 ${user} recule stylé sur ${distance}m à ${map}, ${killer} hésite à avancer. +${pts} PdS (total : ${total})`,
-        `🕺 ${distance}m de moonwalk correct, un peu essoufflé sur la fin, mais ${user} assure sur ${map}. +${pts} PdS (total : ${total})`,
-        `🕺 ${user} enchaîne ${distance}m de pas glissés sur ${map}, ${killer} ne sait plus s'il doit rire ou attaquer. +${pts} PdS (total : ${total})`,
-      ]));
-    } else if (roll > 25) {
-      const pts = applyMultipliers(ch, user, -loss('petite'));
-      const total = addPoints(ch, user, pts);
-      client.say(channel, pick([
-        `🕺 ${user} moonwalk tranquillement sur ${map}... jusqu'à percuter ${survivor} de plein fouet après ${distance}m. Fin de la choré. ${pts} PdS (total : ${total})`,
-        `🕺 En pleine trajectoire, ${survivor} se met accidentellement devant ${user} au bout de ${distance}m, moonwalk interrompu sur ${map}. ${pts} PdS (total : ${total})`,
-        `🕺 ${user} et ${survivor} se percutent en pleine chorégraphie après ${distance}m sur ${map}, moment gênant. ${pts} PdS (total : ${total})`,
-        `🕺 ${distance}m de moonwalk, puis ${user} trébuche sur une racine qui n'existait clairement pas avant sur ${map}. ${pts} PdS (total : ${total})`,
-        `🕺 Après ${distance}m, ${user} percute un mur invisible sur ${map} en pleine choré. Le public de ${survivor} est mort de rire. ${pts} PdS (total : ${total})`,
-      ]));
-    } else {
-      setBlessed(ch, user);
-      const pts = applyMultipliers(ch, user, -loss('grosse'));
-      const total = addPoints(ch, user, pts);
-      client.say(channel, pick([
-        `🕺 ${user} moonwalk avec trop de style sur ${map}... ${killer} en profite et frappe en pleine choré après ${distance}m. Tu es blessé ! ${pts} PdS (total : ${total})`,
-        `🕺 Concentré sur ses pas, ${user} ne voit pas ${killer} arriver après ${distance}m sur ${map}. Moonwalk fatal, tu es blessé ! ${pts} PdS (total : ${total})`,
-        `🕺 ${killer} n'apprécie pas le show : ${user} se fait frapper en pleine performance de ${distance}m sur ${map}. Tu es blessé ! ${pts} PdS (total : ${total})`,
-        `🕺 ${distance}m de gloire, puis ${killer} met fin au spectacle d'un coup bien placé sur ${map}. Tu es blessé ! ${pts} PdS (total : ${total})`,
-        `🕺 ${user} pousse le moonwalk jusqu'à ${distance}m, trop absorbé pour remarquer ${killer} juste derrière sur ${map}. Tu es blessé ! ${pts} PdS (total : ${total})`,
-      ]));
-    }
+    const pts = applyMultipliers(ch, user, gain('difficile'));
+    const total = addPoints(ch, user, pts);
+    client.say(channel, pick([
+      `🏃 ${user} est pris en chasse par ${killer.subject} sur ${map}... et sème son poursuivant ! +${pts} PdS (total : ${total})`,
+      `🏃 ${killer.subject} charge ${user} sur ${map}, mais un juke bien placé sauve la mise ! +${pts} PdS (total : ${total})`,
+      `🏃 ${user} enchaîne les loops autour d'un générateur pour épuiser ${killer.subject} sur ${map}. +${pts} PdS (total : ${total})`,
+      `🏃 Cœur battant, ${user} slalome entre les palettes de ${map} pour échapper ${killer.a}. +${pts} PdS (total : ${total})`,
+      `🏃 ${survivor} distrait ${killer.subject} pendant que ${user} s'échappe de justesse sur ${map}. +${pts} PdS (total : ${total})`,
+      `🏃 ${user} vault une fenêtre à la dernière seconde, ${killer.subject} ratant son swing sur ${map}. +${pts} PdS (total : ${total})`,
+    ]));
   }
 
   else if (msg.startsWith('!soigner')) {
     const parts = message.trim().split(' ');
     if (parts.length < 2) return;
     const target = parts[1].replace('@', '');
-    if (target.toLowerCase() === user.toLowerCase()) {
-      client.say(channel, `💉 ${user}, tu ne peux pas te soigner toi-même ! Demande de l'aide à un autre survivant.`);
-      return;
-    }
     if (isBlessed(ch, target)) {
       const pts = applyMultipliers(ch, user, gain('facile'));
       addPoints(ch, user, pts);
       const total = addPoints(ch, target, pts);
       healUser(ch, target);
       client.say(channel, pick([
-        `💉 ${user} soigne ${target}, blessé par ${killer} sur ${map}. Les deux gagnent +${pts} PdS !`,
-        `💉 À l'abri des regards de ${killer}, ${user} recoud les blessures de ${target} sur ${map}. +${pts} PdS chacun !`,
-        `💉 ${user} presse une compresse sur la plaie de ${target}, ${killer} n'étant jamais loin sur ${map}. +${pts} PdS chacun !`,
+        `💉 ${user} soigne ${target}, blessé par ${killer.subject} sur ${map}. Les deux gagnent +${pts} PdS !`,
+        `💉 À l'abri des regards ${killer.de}, ${user} recoud les blessures de ${target} sur ${map}. +${pts} PdS chacun !`,
+        `💉 ${user} presse une compresse sur la plaie de ${target}, ${killer.subject} n'étant jamais loin sur ${map}. +${pts} PdS chacun !`,
         `💉 Dos à dos derrière un mur de ${map}, ${user} soigne ${target} en silence. +${pts} PdS chacun !`,
       ]));
     } else {
@@ -405,7 +334,7 @@ client.on('message', (channel, tags, message, self) => {
     else { pts = -loss('petite'); result = 'Skill check raté, tu es blessé...'; setBlessed(ch, user); }
     pts = applyMultipliers(ch, user, pts);
     const total = addPoints(ch, user, pts);
-    client.say(channel, `🔧 ${user} tente un skill check sur ${map} face à ${killer} : ${result} ${pts >= 0 ? '+' : ''}${pts} PdS (total : ${total})`);
+    client.say(channel, `🔧 ${user} tente un skill check sur ${map} face ${killer.a} : ${result} ${pts >= 0 ? '+' : ''}${pts} PdS (total : ${total})`);
   }
 
   else if (msg === '!qte') {
@@ -416,7 +345,7 @@ client.on('message', (channel, tags, message, self) => {
     else { pts = -loss('moyenne'); result = "QTE raté, tu es blessé..."; setBlessed(ch, user); }
     pts = applyMultipliers(ch, user, pts);
     const total = addPoints(ch, user, pts);
-    client.say(channel, `⚡ ${user} déclenche un QTE d'urgence face à ${killer} : ${result} ${pts >= 0 ? '+' : ''}${pts} PdS (total : ${total})`);
+    client.say(channel, `⚡ ${user} déclenche un QTE d'urgence face ${killer.a} : ${result} ${pts >= 0 ? '+' : ''}${pts} PdS (total : ${total})`);
   }
 
   else if (msg === '!objet') {
@@ -433,19 +362,14 @@ client.on('message', (channel, tags, message, self) => {
   }
 
   else if (msg === '!camping') {
-    if (!isHooked(ch, user)) {
-      client.say(channel, `🔦 ${user}, tu dois d'abord te faire accrocher (rate un !chase) avant de pouvoir être campé !`);
-      return;
-    }
     setBlessed(ch, user);
-    unhook(ch, user);
     const s = getStats(ch, user); s.campingSubis++; saveStats();
     const pts = applyMultipliers(ch, user, -loss('grosse'));
     const total = addPoints(ch, user, pts);
     client.say(channel, pick([
-      `🔦 ${user} se fait camper par ${killer} juste après avoir été accroché sur ${map}... ${pts} PdS (total : ${total})`,
-      `🔦 ${killer} reste planté devant le crochet de ${user} sur ${map}, aucune chance de sauvetage. ${pts} PdS (total : ${total})`,
-      `🔦 ${survivor} tente de s'approcher mais ${killer} ne bouge pas du crochet de ${user} sur ${map}. ${pts} PdS (total : ${total})`,
+      `🔦 ${user} se fait camper par ${killer.subject} juste après avoir été accroché sur ${map}... ${pts} PdS (total : ${total})`,
+      `🔦 ${killer.subject} reste planté devant le crochet de ${user} sur ${map}, aucune chance de sauvetage. ${pts} PdS (total : ${total})`,
+      `🔦 ${survivor} tente de s'approcher mais ${killer.subject} ne bouge pas du crochet de ${user} sur ${map}. ${pts} PdS (total : ${total})`,
     ]));
   }
 
@@ -458,9 +382,9 @@ client.on('message', (channel, tags, message, self) => {
     const pts = applyMultipliers(ch, user, gain('exceptionnel'));
     const total = addPoints(ch, user, pts);
     client.say(channel, pick([
-      `🚪 ${user} s'échappe par la porte de sortie de ${map}, échappant à ${killer} ! JACKPOT +${pts} PdS (total : ${total})`,
-      `🚪 Après une partie intense face à ${killer}, ${user} franchit la sortie de ${map} en vie ! +${pts} PdS (total : ${total})`,
-      `🚪 ${user} et ${survivor} filent ensemble par la sortie de ${map}, laissant ${killer} bredouille ! +${pts} PdS (total : ${total})`,
+      `🚪 ${user} s'échappe par la porte de sortie de ${map}, échappant ${killer.a} ! JACKPOT +${pts} PdS (total : ${total})`,
+      `🚪 Après une partie intense face ${killer.a}, ${user} franchit la sortie de ${map} en vie ! +${pts} PdS (total : ${total})`,
+      `🚪 ${user} et ${survivor} filent ensemble par la sortie de ${map}, laissant ${killer.subject} bredouille ! +${pts} PdS (total : ${total})`,
     ]));
   }
 
@@ -490,7 +414,7 @@ client.on('message', (channel, tags, message, self) => {
     const pts = applyMultipliers(ch, user, Math.round(gain('facile') * rarity.mult));
     const total = addPoints(ch, user, pts);
     client.say(channel, pick([
-      `🃏 ${user} tire la perk "${perk}" (${rarity.label}) dans son build ! +${pts} PdS (total : ${total})`,
+      `🃏 ${user} tire le perk "${perk}" (${rarity.label}) dans son build ! +${pts} PdS (total : ${total})`,
       `🃏 ${survivor} inspire ${user}, qui débloque "${perk}" (${rarity.label}). +${pts} PdS (total : ${total})`,
       `🃏 Une carte de build apparaît devant ${user} : "${perk}" (${rarity.label}) ! +${pts} PdS (total : ${total})`,
     ]));
@@ -510,7 +434,7 @@ client.on('message', (channel, tags, message, self) => {
     let userRoll = rand(1, 100) - (isBlessed(ch, user) ? CONFRONTATION_BLESSURE_MALUS : 0);
     let targetRoll = rand(1, 100) - (isBlessed(ch, target) ? CONFRONTATION_BLESSURE_MALUS : 0);
     if (userRoll === targetRoll) {
-      client.say(channel, `⚔️ ${user} affronte ${target} face à ${killer} sur ${map}... égalité parfaite, personne ne gagne !`);
+      client.say(channel, `⚔️ ${user} affronte ${target} face ${killer.a} sur ${map}... égalité parfaite, personne ne gagne !`);
       return;
     }
     const winner = userRoll > targetRoll ? user : target;
@@ -520,12 +444,17 @@ client.on('message', (channel, tags, message, self) => {
     addPoints(ch, loser, -stake);
     const winnerTotal = addPoints(ch, winner, stake);
     if (winner === user) { const s = getStats(ch, user); s.duelsGagnes++; saveStats(); }
-    client.say(channel, `⚔️ ${user} défie ${target} face à ${killer} sur ${map} : ${winner} l'emporte et rafle ${stake} PdS (total : ${winnerTotal}) !`);
+    client.say(channel, `⚔️ ${user} défie ${target} face ${killer.a} sur ${map} : ${winner} l'emporte et rafle ${stake} PdS (total : ${winnerTotal}) !`);
   }
 
   else if (msg === '!role') {
     const isKillerRole = Math.random() < 0.5;
-    const roleName = isKillerRole ? pick(KILLERS) : pick(SURVIVORS);
+    let roleName;
+    if (isKillerRole) {
+      roleName = pick(KILLERS).subject;
+    } else {
+      roleName = pick(SURVIVORS);
+    }
     roles[`${ch}-${user}`] = { roleType: isKillerRole ? 'Killer' : 'Survivant', roleName };
     saveRoles();
     client.say(channel, isKillerRole

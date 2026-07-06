@@ -1,43 +1,12 @@
-// ---------- KILLERS (avec formes grammaticales correctes) ----------
 const KILLERS = [
-  { subject: 'le Trapper', a: 'au Trapper', de: 'du Trapper' },
-  { subject: 'le Wraith', a: 'au Wraith', de: 'du Wraith' },
-  { subject: 'la Hillbilly', a: 'à la Hillbilly', de: 'de la Hillbilly' },
-  { subject: 'la Nurse', a: 'à la Nurse', de: 'de la Nurse' },
-  { subject: 'le Myers', a: 'au Myers', de: 'du Myers' },
-  { subject: 'la Hag', a: 'à la Hag', de: 'de la Hag' },
-  { subject: 'le Doctor', a: 'au Doctor', de: 'du Doctor' },
-  { subject: 'Freddy', a: 'à Freddy', de: 'de Freddy' },
-  { subject: 'le Cannibal', a: 'au Cannibal', de: 'du Cannibal' },
-  { subject: 'le Pig', a: 'au Pig', de: 'du Pig' },
-  { subject: 'la Huntress', a: 'à la Huntress', de: 'de la Huntress' },
-  { subject: 'le Clown', a: 'au Clown', de: 'du Clown' },
-  { subject: 'la Spirit', a: 'à la Spirit', de: 'de la Spirit' },
-  { subject: 'le Legion', a: 'au Legion', de: 'du Legion' },
-  { subject: 'la Plague', a: 'à la Plague', de: 'de la Plague' },
-  { subject: 'Ghost Face', a: 'à Ghost Face', de: 'de Ghost Face' },
-  { subject: 'le Demogorgon', a: 'au Demogorgon', de: 'du Demogorgon' },
-  { subject: "l'Oni", a: "à l'Oni", de: "de l'Oni" },
-  { subject: 'le Deathslinger', a: 'au Deathslinger', de: 'du Deathslinger' },
-  { subject: "l'Executioner", a: "à l'Executioner", de: "de l'Executioner" },
-  { subject: 'le Blight', a: 'au Blight', de: 'du Blight' },
-  { subject: 'le Twins', a: 'au Twins', de: 'du Twins' },
-  { subject: 'le Trickster', a: 'au Trickster', de: 'du Trickster' },
-  { subject: 'la Nemesis', a: 'à la Nemesis', de: 'de la Nemesis' },
-  { subject: "l'Artist", a: "à l'Artist", de: "de l'Artist" },
-  { subject: 'le Dredge', a: 'au Dredge', de: 'du Dredge' },
-  { subject: 'le Knight', a: 'au Knight', de: 'du Knight' },
-  { subject: 'la Skull Merchant', a: 'à la Skull Merchant', de: 'de la Skull Merchant' },
-  { subject: 'le Singularity', a: 'au Singularity', de: 'du Singularity' },
-  { subject: 'le Xenomorph', a: 'au Xenomorph', de: 'du Xenomorph' },
-  { subject: 'Chucky', a: 'à Chucky', de: 'de Chucky' },
-  { subject: "l'Unknown", a: "à l'Unknown", de: "de l'Unknown" },
-  { subject: "l'Onryo", a: "à l'Onryo", de: "de l'Onryo" },
-  { subject: 'Wesker', a: 'à Wesker', de: 'de Wesker' },
-  { subject: 'le Vecna', a: 'au Vecna', de: 'du Vecna' },
-  { subject: "l'Animatronic", a: "à l'Animatronic", de: "de l'Animatronic" },
-  { subject: 'le Ghoul', a: 'au Ghoul', de: 'du Ghoul' },
-  { subject: 'le Slasher', a: 'au Slasher', de: 'du Slasher' },
+  'le Trapper', 'le Wraith', 'la Hillbilly', 'la Nurse', 'le Myers',
+  'la Hag', 'le Doctor', 'Freddy', 'le Cannibal', 'le Pig',
+  'la Huntress', 'le Clown', 'la Spirit', 'le Legion', 'la Plague',
+  'Ghost Face', 'le Demogorgon', "l'Oni", 'le Deathslinger', "l'Executioner",
+  'le Blight', 'le Twins', 'le Trickster', 'la Nemesis', "l'Artist",
+  'le Dredge', 'le Knight', 'la Skull Merchant', 'le Singularity',
+  'le Xenomorph', 'Chucky', 'le Unknown', "l'Onryo", 'Wesker',
+  'le Vecna', "l'Animatronic", 'le Ghoul', 'le Slasher'
 ];
 
 const MAPS = [
@@ -56,15 +25,19 @@ const SURVIVORS = [
   'Jill', 'Leon', 'Mikaela', 'Rebecca', 'Vittorio'
 ];
 
-// ---------- PERKS SURVIVANT (noms français officiels vérifiés) ----------
+// ---------- PERKS SURVIVANT (noms officiels français) ----------
 const PERKS = [
-  'Course effrénée', 'Dur à cuir', 'Adrénaline', 'Volonté de fer', 'Kindred',
-  'Sursis', "We'll Make It", 'Auto-traitement', 'Coup décisif', 'Souple',
-  'Empathie', 'Ténacité', 'Résilience', 'Lien', 'Incassable',
-  'Rapide et silencieux', 'Esprit calme', 'Prémonition', "Objet d'obsession",
-  'Distorsion', 'Bouclez votre ceinture', 'Vigile', 'Résurgence',
-  'Atterrissage équilibré', 'Espoir', 'Prouvez-vous', 'Leader',
-  'Power Struggle', 'Autodidacte', 'Déjà Vu'
+  'Course Effrénée', 'De Front', 'Adrénaline', 'Volonté de Fer', 'Parenté',
+  'Sursis', 'Nous Y Arriverons', 'Auto-Traitement', 'Volonté de Vivre', 'Souple',
+  'Empathie', 'Ténacité', 'Fais tes Preuves', 'Déjà-Vu', 'Connaissances en Botanique',
+  'Conçu pour Durer', 'Débrouillardise', 'Lien', 'Indéfectible', 'Rapide et Silencieux',
+  'Poids Plume', 'Esprit Calme', 'Hyperconcentration', 'En Planque', 'Pour le Peuple',
+  "Intuition de l'Inspecteur", 'Objet de Fascination', 'Frisson', 'Prémonition',
+  'Parfaite Occasion', 'Distorsion', 'Assurance', 'Libération', 'Résistance',
+  'Effusion', 'Bras de Fer', 'Effondrement', 'Autodidacte',
+  'Nous Vivrons Éternellement', 'Veillée', 'Second Souffle', 'Par Tous les Moyens',
+  'Camaraderie', 'Force Intérieure', 'Solidarité', 'Technicien', 'Confidentiel',
+  'Suivi des Soins', 'Renaissance'
 ];
 
 // ---------- OBJETS + RARETÉS ----------
@@ -78,25 +51,25 @@ const RARITIES = {
 
 const ITEMS = [
   'une lampe torche', 'une lampe torche renforcée', 'une boîte à outils',
-  'une boîte à outils rouillée', 'une trousse de soins', 'une trousse de soins renforcée',
-  'une trousse de secours usée', 'une carte', 'une carte topographique déchirée',
-  'une clé', 'une clé squelette', 'un pétard', 'un pétard artisanal',
-  'un flacon de brume', 'un flacon de brume épaisse', 'un miroir brisé',
-  'un miroir fêlé', 'des gants chirurgicaux', 'un pack de piles'
+  'une boîte à outils rouillée', 'un kit de premiers secours',
+  'un kit de premiers secours amélioré', 'une trousse de secours usée',
+  'une carte', 'une carte topographique déchirée', 'une clé', 'une clé squelette',
+  'une fiole de brume', 'une fiole de brume épaisse', 'un miroir brisé',
+  'un miroir fêlé', 'des gants chirurgicaux', 'un jeu de piles'
 ];
 
-// ---------- OFFRANDES (noms traduits en français) ----------
+// ---------- OFFRANDES (noms officiels français) ----------
 const OFFERINGS = [
-  { name: 'Laurier des marais',              rarityLabel: 'Commun',     cost: 30,  mult: 1.2, duration: 2 * 60 * 1000 },
-  { name: 'Amarante craquante',              rarityLabel: 'Commun',     cost: 30,  mult: 1.2, duration: 2 * 60 * 1000 },
-  { name: 'Œillet de poète',                 rarityLabel: 'Commun',     cost: 30,  mult: 1.2, duration: 2 * 60 * 1000 },
-  { name: 'Sachet de sel',                   rarityLabel: 'Peu commun', cost: 50,  mult: 1.3, duration: 2 * 60 * 1000 },
-  { name: 'Pièce ternie',                    rarityLabel: 'Peu commun', cost: 50,  mult: 1.3, duration: 2 * 60 * 1000 },
-  { name: "Linceul de l'union",              rarityLabel: 'Peu commun', cost: 50,  mult: 1.3, duration: 2 * 60 * 1000 },
-  { name: 'Enveloppe scellée',               rarityLabel: 'Rare',       cost: 90,  mult: 1.5, duration: 3 * 60 * 1000 },
-  { name: 'Statuette de sel noir',           rarityLabel: 'Rare',       cost: 90,  mult: 1.5, duration: 3 * 60 * 1000 },
-  { name: 'Serpentins de fête ensanglantés', rarityLabel: 'Très rare',  cost: 140, mult: 1.8, duration: 3 * 60 * 1000 },
-  { name: 'Linceul du lien',                 rarityLabel: 'Très rare',  cost: 140, mult: 1.6, duration: 4 * 60 * 1000 },
+  { name: 'le Laurier des Marais',      rarityLabel: 'Commun',     cost: 30,  mult: 1.2, duration: 2 * 60 * 1000 },
+  { name: "l'Amarante Craquante",       rarityLabel: 'Commun',     cost: 30,  mult: 1.2, duration: 2 * 60 * 1000 },
+  { name: "l'Œillet de Poète",          rarityLabel: 'Commun',     cost: 30,  mult: 1.2, duration: 2 * 60 * 1000 },
+  { name: 'la Pochette de Sel',         rarityLabel: 'Peu commun', cost: 50,  mult: 1.3, duration: 2 * 60 * 1000 },
+  { name: 'la Pièce Ternie',            rarityLabel: 'Peu commun', cost: 50,  mult: 1.3, duration: 2 * 60 * 1000 },
+  { name: "le Linceul de l'Union",      rarityLabel: 'Peu commun', cost: 50,  mult: 1.3, duration: 2 * 60 * 1000 },
+  { name: "l'Enveloppe Liée",           rarityLabel: 'Rare',       cost: 90,  mult: 1.5, duration: 3 * 60 * 1000 },
+  { name: 'la Statuette de Sel Noir',   rarityLabel: 'Rare',       cost: 90,  mult: 1.5, duration: 3 * 60 * 1000 },
+  { name: 'les Serpentins Sanglants',   rarityLabel: 'Très rare',  cost: 140, mult: 1.8, duration: 3 * 60 * 1000 },
+  { name: 'le Linceul du Lien',         rarityLabel: 'Très rare',  cost: 140, mult: 1.6, duration: 4 * 60 * 1000 },
 ];
 
 const EVENTS = [
@@ -121,6 +94,7 @@ const CONFRONTATION_BLESSURE_MALUS = 15;
 
 const WEEK_RESET_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 
+// ---------- BOUTIQUE ----------
 const SHOP = {
   titre: { label: 'Titre personnalisé affiché dans le classement', cost: 500 },
   skip:  { label: "Annule un cooldown en cours (précise la commande, ex: !acheter skip generateur)", cost: 200 },
@@ -165,6 +139,10 @@ const COOLDOWNS = {
   boutique:       10,
   acheter:        15,
   loterie:        30,
+  moonwalk:       50,
+  patrouille:     45,
+  frappe:         60,
+  camper:         60,
 };
 
 const GLOBAL_COOLDOWN = 8;

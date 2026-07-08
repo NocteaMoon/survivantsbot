@@ -58,6 +58,27 @@ const ITEMS = [
   'un miroir fêlé', 'des gants chirurgicaux', 'un jeu de piles'
 ];
 
+// ---------- EFFETS DES OBJETS (un seul objet actif à la fois, se consomme à l'usage) ----------
+const ITEM_EFFECTS = {
+  'une lampe torche':                    { boostCmd: 'chase',      mult: 1.3 },
+  'une lampe torche renforcée':          { boostCmd: 'chase',      mult: 1.6 },
+  'un jeu de piles':                     { boostCmd: 'chase',      mult: 1.15 },
+  'une boîte à outils':                  { boostCmd: 'generateur', mult: 1.3 },
+  'une boîte à outils rouillée':         { boostCmd: 'generateur', mult: 1.15 },
+  'un kit de premiers secours':          { boostCmd: 'echappe',    autoHeal: true },
+  'un kit de premiers secours amélioré': { boostCmd: 'echappe',    autoHeal: true },
+  'une trousse de secours usée':         { boostCmd: 'soigner',    mult: 1.2 },
+  'des gants chirurgicaux':              { boostCmd: 'soigner',    mult: 1.4 },
+  'une carte':                           { boostCmd: 'totem',      mult: 1.3 },
+  'une carte topographique déchirée':    { boostCmd: 'totem',      mult: 1.15 },
+  'une clé':                             { boostCmd: 'echappe',    mult: 1.3 },
+  'une clé squelette':                   { boostCmd: 'echappe',    mult: 1.6 },
+  'une fiole de brume':                  { boostCmd: 'camping',    reducePenalty: 0.5 },
+  'une fiole de brume épaisse':          { boostCmd: 'camping',    reducePenalty: 0.7 },
+  'un miroir brisé':                     { boostCmd: 'skillcheck', mult: 1.3 },
+  'un miroir fêlé':                      { boostCmd: 'qte',        mult: 1.3 },
+};
+
 // ---------- OFFRANDES (noms officiels français) ----------
 const OFFERINGS = [
   { name: 'le Laurier des Marais',      rarityLabel: 'Commun',     cost: 30,  mult: 1.2, duration: 2 * 60 * 1000 },
@@ -149,7 +170,7 @@ const GLOBAL_COOLDOWN = 8;
 const EVENT_CHANCE = 0.06;
 
 module.exports = {
-  KILLERS, MAPS, SURVIVORS, PERKS, RARITIES, ITEMS, OFFERINGS, EVENTS, RANKS,
+  KILLERS, MAPS, SURVIVORS, PERKS, RARITIES, ITEMS, ITEM_EFFECTS, OFFERINGS, EVENTS, RANKS,
   BLEED_PENALTY, CONFRONTATION_STAKE_PERCENT, CONFRONTATION_STAKE_CAP,
   CONFRONTATION_BLESSURE_MALUS, WEEK_RESET_INTERVAL_MS,
   SHOP, LOTTERY_ENTRY_COST, LOTTERY_DURATION,

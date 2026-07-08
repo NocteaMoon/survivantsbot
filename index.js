@@ -2,7 +2,7 @@ require('dotenv').config();
 const tmi = require('tmi.js');
 const fs = require('fs');
 const {
-  KILLERS, MAPS, SURVIVORS, PERKS, RARITIES, ITEMS, OFFERINGS, EVENTS, RANKS,
+  KILLERS, MAPS, SURVIVORS, PERKS, RARITIES, ITEMS, ITEM_EFFECTS, OFFERINGS, EVENTS, RANKS,
   BLEED_PENALTY, CONFRONTATION_STAKE_PERCENT, CONFRONTATION_STAKE_CAP,
   CONFRONTATION_BLESSURE_MALUS, WEEK_RESET_INTERVAL_MS,
   SHOP, LOTTERY_ENTRY_COST, LOTTERY_DURATION,
@@ -109,12 +109,31 @@ function isKillerRole(ch, user) {
   return !!(r && r.roleType === 'Killer');
 }
 
-// ---------- KIT DE PREMIERS SECOURS (auto-soin) ----------
-const MEDKIT_ITEMS = ['un kit de premiers secours', 'un kit de premiers secours amélioré'];
-const medkits = new Map();
-function hasMedkit(ch, user) { return medkits.get(`${ch}-${user.toLowerCase()}`) === true; }
-function giveMedkit(ch, user) { medkits.set(`${ch}-${user.toLowerCase()}`, true); }
-function useMedkit(ch, user) { medkits.delete(`${ch}-${user.toLowerCase()}`); }
+// ---------- INVENTAIRE (un seul objet actif à la fois, comme dans le vrai jeu) ----------
+const inventory = new Map();
+function getItem(ch, user) { return inventory.get(`${ch}-${user.toLowerCase()}`) || null; }
+function setItem(ch, user, item) { inventory.set(`${ch}-${user.toLowerCase()}`, item); }
+function clearItem(ch, user) { inventory.delete(`${ch}-${user.toLowerCase()}`); }
+
+// Applique le bonus de l'objet actif si sa commande correspond, puis le consomme.
+// Retourne { pts, used } où "used" est le nom de l'objet consommé (ou null si rien).
+function applyItemBonus(ch, user, cmdName, pts) {
+  const item = getItem(ch, user);
+  if (!item) return { pts, used: null };
+  const effect = ITEM_EFFECTS[item];
+  if (!effect || effect.boostCmd !== cmdName) return { pts, used: null };
+  let newPts = pts;
+  if (effect.mult && pts > 0) newPts = Math.round(pts * effect.mult);
+  clearItem(ch, user);
+  return { pts: newPts, used: item };
+}
+
+function hasAutoHealItem(ch, user) {
+  const item = getItem(ch, user);
+  if (!item) return false;
+  const effect = ITEM_EFFECTS[item];
+  return !!(effect && effect.autoHeal);
+}
 
 // ---------- VERROUILLAGE DU BOT (par chaîne) ----------
 const botLocked = new Map();
@@ -291,17 +310,20 @@ client.on('message', (channel, tags, message, self) => {
   }
 
   if (msg === '!generateur') {
-    const pts = applyMultipliers(ch, user, gain('moyen'));
+    let pts = applyMultipliers(ch, user, gain('moyen'));
+    const bonus = applyItemBonus(ch, user, 'generateur', pts);
+    pts = bonus.pts;
     const total = addPoints(ch, user, pts);
+    const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
     client.say(channel, pick([
-      `⚙️ ${user} se connecte à un générateur sur ${map}, tandis que ${killer} patrouille au loin. Réparation terminée ! +${pts} PdS (total : ${total})`,
-      `⚙️ Sur ${map}, ${user} répare un générateur en retenant son souffle, ${killer} passant à quelques mètres. +${pts} PdS (total : ${total})`,
-      `⚙️ ${user} termine un générateur juste avant que ${killer} n'apparaisse à l'horizon de ${map} ! +${pts} PdS (total : ${total})`,
-      `⚙️ ${survivor} aide ${user} à finir ce générateur de ${map} en un temps record. +${pts} PdS (total : ${total})`,
-      `⚙️ ${user} sursaute à chaque bruit sur ${map}, mais le générateur crache enfin ses dernières étincelles. +${pts} PdS (total : ${total})`,
-      `⚙️ Concentré malgré les cris au loin, ${user} boucle la réparation sur ${map}. +${pts} PdS (total : ${total})`,
-      `⚙️ ${user} et ${survivor} se relaient sur ce générateur de ${map}, ${killer} rôdant sans les voir. +${pts} PdS (total : ${total})`,
-      `⚙️ Un bruit de terreur retentit au loin sur ${map}, mais ${user} garde son sang-froid et termine le générateur. +${pts} PdS (total : ${total})`,
+      `⚙️ ${user} se connecte à un générateur sur ${map}, tandis que ${killer} patrouille au loin. Réparation terminée !${bonusText} +${pts} PdS (total : ${total})`,
+      `⚙️ Sur ${map}, ${user} répare un générateur en retenant son souffle, ${killer} passant à quelques mètres.${bonusText} +${pts} PdS (total : ${total})`,
+      `⚙️ ${user} termine un générateur juste avant que ${killer} n'apparaisse à l'horizon de ${map} !${bonusText} +${pts} PdS (total : ${total})`,
+      `⚙️ ${survivor} aide ${user} à finir ce générateur de ${map} en un temps record.${bonusText} +${pts} PdS (total : ${total})`,
+      `⚙️ ${user} sursaute à chaque bruit sur ${map}, mais le générateur crache enfin ses dernières étincelles.${bonusText} +${pts} PdS (total : ${total})`,
+      `⚙️ Concentré malgré les cris au loin, ${user} boucle la réparation sur ${map}.${bonusText} +${pts} PdS (total : ${total})`,
+      `⚙️ ${user} et ${survivor} se relaient sur ce générateur de ${map}, ${killer} rôdant sans les voir.${bonusText} +${pts} PdS (total : ${total})`,
+      `⚙️ Un bruit de terreur retentit au loin sur ${map}, mais ${user} garde son sang-froid et termine le générateur.${bonusText} +${pts} PdS (total : ${total})`,
     ]));
   }
 
@@ -309,7 +331,7 @@ client.on('message', (channel, tags, message, self) => {
     const rarity = pickRarity();
     const item = pick(ITEMS);
     maybeUpdateBestRarity(ch, user, rarity);
-    if (MEDKIT_ITEMS.includes(item)) giveMedkit(ch, user);
+    setItem(ch, user, item);
     const pts = applyMultipliers(ch, user, Math.round(gain('facile') * rarity.mult));
     const total = addPoints(ch, user, pts);
     client.say(channel, pick([
@@ -322,29 +344,35 @@ client.on('message', (channel, tags, message, self) => {
   }
 
   else if (msg === '!totem') {
-    const pts = applyMultipliers(ch, user, gain('moyen'));
+    let pts = applyMultipliers(ch, user, gain('moyen'));
+    const bonus = applyItemBonus(ch, user, 'totem', pts);
+    pts = bonus.pts;
     const total = addPoints(ch, user, pts);
+    const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
     client.say(channel, pick([
-      `🕯️ ${user} repère un totem hexagonal maudit sur ${map} et l'éteint d'un geste sûr. +${pts} PdS (total : ${total})`,
-      `🕯️ Malgré la malédiction de ${killer}, ${user} nettoie un totem sur ${map}. +${pts} PdS (total : ${total})`,
-      `🕯️ ${user} détruit un totem hex caché dans les buissons de ${map}, brisant une partie du pouvoir de ${killer}. +${pts} PdS (total : ${total})`,
-      `🕯️ Guidé par ${survivor}, ${user} localise et éteint un totem maudit sur ${map}. +${pts} PdS (total : ${total})`,
-      `🕯️ La flamme du totem vacille puis s'éteint sous les mains de ${user}, quelque part sur ${map}. +${pts} PdS (total : ${total})`,
+      `🕯️ ${user} repère un totem hexagonal maudit sur ${map} et l'éteint d'un geste sûr.${bonusText} +${pts} PdS (total : ${total})`,
+      `🕯️ Malgré la malédiction de ${killer}, ${user} nettoie un totem sur ${map}.${bonusText} +${pts} PdS (total : ${total})`,
+      `🕯️ ${user} détruit un totem hex caché dans les buissons de ${map}, brisant une partie du pouvoir de ${killer}.${bonusText} +${pts} PdS (total : ${total})`,
+      `🕯️ Guidé par ${survivor}, ${user} localise et éteint un totem maudit sur ${map}.${bonusText} +${pts} PdS (total : ${total})`,
+      `🕯️ La flamme du totem vacille puis s'éteint sous les mains de ${user}, quelque part sur ${map}.${bonusText} +${pts} PdS (total : ${total})`,
     ]));
   }
 
   else if (msg === '!chase') {
     const roll = rand(1, 100);
     if (roll > 25) {
-      const pts = applyMultipliers(ch, user, gain('difficile'));
+      let pts = applyMultipliers(ch, user, gain('difficile'));
+      const bonus = applyItemBonus(ch, user, 'chase', pts);
+      pts = bonus.pts;
       const total = addPoints(ch, user, pts);
+      const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
       client.say(channel, pick([
-        `🏃 ${user} est pris en chasse par ${killer} sur ${map}... et sème son poursuivant ! +${pts} PdS (total : ${total})`,
-        `🏃 ${killer} charge ${user} sur ${map}, mais un juke bien placé sauve la mise ! +${pts} PdS (total : ${total})`,
-        `🏃 ${user} enchaîne les loops autour d'un générateur pour épuiser ${killer} sur ${map}. +${pts} PdS (total : ${total})`,
-        `🏃 Cœur battant, ${user} slalome entre les palettes de ${map} pour échapper à ${killer}. +${pts} PdS (total : ${total})`,
-        `🏃 ${survivor} distrait ${killer} pendant que ${user} s'échappe de justesse sur ${map}. +${pts} PdS (total : ${total})`,
-        `🏃 ${user} vault une fenêtre à la dernière seconde, ${killer} ratant son swing sur ${map}. +${pts} PdS (total : ${total})`,
+        `🏃 ${user} est pris en chasse par ${killer} sur ${map}... et sème son poursuivant !${bonusText} +${pts} PdS (total : ${total})`,
+        `🏃 ${killer} charge ${user} sur ${map}, mais un juke bien placé sauve la mise !${bonusText} +${pts} PdS (total : ${total})`,
+        `🏃 ${user} enchaîne les loops autour d'un générateur pour épuiser ${killer} sur ${map}.${bonusText} +${pts} PdS (total : ${total})`,
+        `🏃 Cœur battant, ${user} slalome entre les palettes de ${map} pour échapper à ${killer}.${bonusText} +${pts} PdS (total : ${total})`,
+        `🏃 ${survivor} distrait ${killer} pendant que ${user} s'échappe de justesse sur ${map}.${bonusText} +${pts} PdS (total : ${total})`,
+        `🏃 ${user} vault une fenêtre à la dernière seconde, ${killer} ratant son swing sur ${map}.${bonusText} +${pts} PdS (total : ${total})`,
       ]));
     } else {
       setHooked(ch, user);
@@ -416,15 +444,18 @@ client.on('message', (channel, tags, message, self) => {
       return;
     }
     if (isBlessed(ch, target)) {
-      const pts = applyMultipliers(ch, user, gain('facile'));
+      let pts = applyMultipliers(ch, user, gain('facile'));
+      const bonus = applyItemBonus(ch, user, 'soigner', pts);
+      pts = bonus.pts;
       addPoints(ch, user, pts);
       const total = addPoints(ch, target, pts);
       healUser(ch, target);
+      const bonusText = bonus.used ? ` (grâce à ${bonus.used} de ${user} !)` : '';
       client.say(channel, pick([
-        `💉 ${user} soigne ${target}, blessé par ${killer} sur ${map}. Les deux gagnent +${pts} PdS !`,
-        `💉 À l'abri des regards de ${killer}, ${user} recoud les blessures de ${target} sur ${map}. +${pts} PdS chacun !`,
-        `💉 ${user} presse une compresse sur la plaie de ${target}, ${killer} n'étant jamais loin sur ${map}. +${pts} PdS chacun !`,
-        `💉 Dos à dos derrière un mur de ${map}, ${user} soigne ${target} en silence. +${pts} PdS chacun !`,
+        `💉 ${user} soigne ${target}, blessé par ${killer} sur ${map}.${bonusText} Les deux gagnent +${pts} PdS !`,
+        `💉 À l'abri des regards de ${killer}, ${user} recoud les blessures de ${target} sur ${map}.${bonusText} +${pts} PdS chacun !`,
+        `💉 ${user} presse une compresse sur la plaie de ${target}, ${killer} n'étant jamais loin sur ${map}.${bonusText} +${pts} PdS chacun !`,
+        `💉 Dos à dos derrière un mur de ${map}, ${user} soigne ${target} en silence.${bonusText} +${pts} PdS chacun !`,
       ]));
     } else {
       const pts = applyMultipliers(ch, user, gain('tresFacile'));
@@ -440,8 +471,11 @@ client.on('message', (channel, tags, message, self) => {
     else if (roll > 30) { pts = gain('moyen'); result = 'Skill check réussi'; }
     else { pts = -loss('petite'); result = 'Skill check raté, tu es blessé...'; setBlessed(ch, user); }
     pts = applyMultipliers(ch, user, pts);
+    const bonus = applyItemBonus(ch, user, 'skillcheck', pts);
+    pts = bonus.pts;
     const total = addPoints(ch, user, pts);
-    client.say(channel, `🔧 ${user} tente un skill check sur ${map} face à ${killer} : ${result} ${pts >= 0 ? '+' : ''}${pts} PdS (total : ${total})`);
+    const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
+    client.say(channel, `🔧 ${user} tente un skill check sur ${map} face à ${killer} : ${result}${bonusText} ${pts >= 0 ? '+' : ''}${pts} PdS (total : ${total})`);
   }
 
   else if (msg === '!qte') {
@@ -451,15 +485,18 @@ client.on('message', (channel, tags, message, self) => {
     else if (roll > 50) { pts = gain('difficile'); result = 'QTE réussi'; }
     else { pts = -loss('moyenne'); result = "QTE raté, tu es blessé..."; setBlessed(ch, user); }
     pts = applyMultipliers(ch, user, pts);
+    const bonus = applyItemBonus(ch, user, 'qte', pts);
+    pts = bonus.pts;
     const total = addPoints(ch, user, pts);
-    client.say(channel, `⚡ ${user} déclenche un QTE d'urgence face à ${killer} : ${result} ${pts >= 0 ? '+' : ''}${pts} PdS (total : ${total})`);
+    const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
+    client.say(channel, `⚡ ${user} déclenche un QTE d'urgence face à ${killer} : ${result}${bonusText} ${pts >= 0 ? '+' : ''}${pts} PdS (total : ${total})`);
   }
 
   else if (msg === '!objet') {
     const rarity = pickRarity();
     const item = pick(ITEMS);
     maybeUpdateBestRarity(ch, user, rarity);
-    if (MEDKIT_ITEMS.includes(item)) giveMedkit(ch, user);
+    setItem(ch, user, item);
     const pts = applyMultipliers(ch, user, Math.round(gain('moyen') * rarity.mult));
     const total = addPoints(ch, user, pts);
     client.say(channel, pick([
@@ -477,12 +514,21 @@ client.on('message', (channel, tags, message, self) => {
     setBlessed(ch, user);
     unhook(ch, user);
     const s = getStats(ch, user); s.campingSubis++; saveStats();
-    const pts = applyMultipliers(ch, user, -loss('grosse'));
+    let lossAmount = loss('grosse');
+    const item = getItem(ch, user);
+    const effect = item ? ITEM_EFFECTS[item] : null;
+    let bonusText = '';
+    if (effect && effect.boostCmd === 'camping' && effect.reducePenalty) {
+      lossAmount = Math.round(lossAmount * (1 - effect.reducePenalty));
+      clearItem(ch, user);
+      bonusText = ` (${item} a limité les dégâts !)`;
+    }
+    const pts = applyMultipliers(ch, user, -lossAmount);
     const total = addPoints(ch, user, pts);
     client.say(channel, pick([
-      `🔦 ${user} se fait camper par ${killer} juste après avoir été accroché sur ${map}... ${pts} PdS (total : ${total})`,
-      `🔦 ${killer} reste planté devant le crochet de ${user} sur ${map}, aucune chance de sauvetage. ${pts} PdS (total : ${total})`,
-      `🔦 ${survivor} tente de s'approcher mais ${killer} ne bouge pas du crochet de ${user} sur ${map}. ${pts} PdS (total : ${total})`,
+      `🔦 ${user} se fait camper par ${killer} juste après avoir été accroché sur ${map}...${bonusText} ${pts} PdS (total : ${total})`,
+      `🔦 ${killer} reste planté devant le crochet de ${user} sur ${map}, aucune chance de sauvetage.${bonusText} ${pts} PdS (total : ${total})`,
+      `🔦 ${survivor} tente de s'approcher mais ${killer} ne bouge pas du crochet de ${user} sur ${map}.${bonusText} ${pts} PdS (total : ${total})`,
     ]));
   }
 
@@ -550,22 +596,26 @@ client.on('message', (channel, tags, message, self) => {
 
   else if (msg === '!echappe') {
     if (isBlessed(ch, user)) {
-      if (hasMedkit(ch, user)) {
-        useMedkit(ch, user);
+      if (hasAutoHealItem(ch, user)) {
+        const item = getItem(ch, user);
+        clearItem(ch, user);
         healUser(ch, user);
-        client.say(channel, `🩹 ${user} était blessé mais sort en urgence son kit de premiers secours pour se soigner avant de foncer vers la sortie !`);
+        client.say(channel, `🩹 ${user} était blessé mais sort en urgence ${item} pour se soigner avant de foncer vers la sortie !`);
       } else {
         client.say(channel, `🚪 ${user} est blessé et ne peut pas s'échapper dans cet état ! Fais-toi soigner avec !soigner, ou trouve un kit de premiers secours (via !coffre ou !objet).`);
         return;
       }
     }
     const s = getStats(ch, user); s.echappes++; saveStats();
-    const pts = applyMultipliers(ch, user, gain('exceptionnel'));
+    let pts = applyMultipliers(ch, user, gain('exceptionnel'));
+    const bonus = applyItemBonus(ch, user, 'echappe', pts);
+    pts = bonus.pts;
     const total = addPoints(ch, user, pts);
+    const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
     client.say(channel, pick([
-      `🚪 ${user} s'échappe par la porte de sortie de ${map}, échappant à ${killer} ! JACKPOT +${pts} PdS (total : ${total})`,
-      `🚪 Après une partie intense face à ${killer}, ${user} franchit la sortie de ${map} en vie ! +${pts} PdS (total : ${total})`,
-      `🚪 ${user} et ${survivor} filent ensemble par la sortie de ${map}, laissant ${killer} bredouille ! +${pts} PdS (total : ${total})`,
+      `🚪 ${user} s'échappe par la porte de sortie de ${map}, échappant à ${killer} !${bonusText} JACKPOT +${pts} PdS (total : ${total})`,
+      `🚪 Après une partie intense face à ${killer}, ${user} franchit la sortie de ${map} en vie !${bonusText} +${pts} PdS (total : ${total})`,
+      `🚪 ${user} et ${survivor} filent ensemble par la sortie de ${map}, laissant ${killer} bredouille !${bonusText} +${pts} PdS (total : ${total})`,
     ]));
   }
 

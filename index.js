@@ -2,11 +2,12 @@ require('dotenv').config();
 const tmi = require('tmi.js');
 const fs = require('fs');
 const {
-  KILLERS, MAPS, SURVIVORS, PERKS, RARITIES, ITEMS, ITEM_EFFECTS, OFFERINGS, EVENTS, RANKS,
+  KILLERS, MAPS, SURVIVORS, PERKS, PERK_EFFECTS, RARITIES, ITEMS, ITEM_EFFECTS, OFFERINGS, EVENTS, RANKS,
   BLEED_PENALTY, CONFRONTATION_STAKE_PERCENT, CONFRONTATION_STAKE_CAP,
   CONFRONTATION_BLESSURE_MALUS, WEEK_RESET_INTERVAL_MS,
   SHOP, LOTTERY_ENTRY_COST, LOTTERY_DURATION,
-  TIERS, LOSS_TIERS, COOLDOWNS, GLOBAL_COOLDOWN, EVENT_CHANCE
+  TIERS, LOSS_TIERS, COOLDOWNS, GLOBAL_COOLDOWN, EVENT_CHANCE,
+  GENS_REQUIRED, TRIAL_RESET_INTERVAL_MS, HATCH_CHANCE
 } = require('./data.js');
 
 const express = require('express');
@@ -117,7 +118,34 @@ function pickSurvivorExcluding(name) {
   return pick(pool);
 }
 
-// ---------- INVENTAIRE (un seul objet actif à la fois, comme dans le vrai jeu) ----------
+// ---------- PARTIE EN COURS (générateurs / portes, par chaîne) ----------
+const trials = new Map();
+function getTrial(ch) {
+  if (!trials.has(ch)) trials.set(ch, { gensRepaired: 0, gatesOpen: false });
+  return trials.get(ch);
+}
+function resetTrial(ch) {
+  trials.set(ch, { gensRepaired: 0, gatesOpen: false });
+}
+
+// ---------- PERKS ÉQUIPÉS (un perk actif à la fois, remplacé au prochain !perk) ----------
+const equippedPerks = new Map();
+function getPerk(ch, user) { return equippedPerks.get(`${ch}-${user.toLowerCase()}`) || null; }
+function setPerk(ch, user, perk) { equippedPerks.set(`${ch}-${user.toLowerCase()}`, perk); }
+function hasSelfHealPerk(ch, user) {
+  const perk = getPerk(ch, user);
+  const effect = perk ? PERK_EFFECTS[perk] : null;
+  return !!(effect && effect.allowSelfHeal);
+}
+// Applique le bonus du perk équipé si sa commande correspond (ne se consomme pas, reste équipé).
+function applyPerkBonus(ch, user, cmdName, pts) {
+  const perk = getPerk(ch, user);
+  if (!perk) return { pts, used: null };
+  const effect = PERK_EFFECTS[perk];
+  if (!effect || effect.boostCmd !== cmdName || !effect.mult) return { pts, used: null };
+  const newPts = pts > 0 ? Math.round(pts * effect.mult) : pts;
+  return { pts: newPts, used: perk };
+}
 const inventory = new Map();
 function getItem(ch, user) { return inventory.get(`${ch}-${user.toLowerCase()}`) || null; }
 function setItem(ch, user, item) { inventory.set(`${ch}-${user.toLowerCase()}`, item); }
@@ -258,6 +286,17 @@ function checkWeeklyResets() {
 }
 setInterval(checkWeeklyResets, 5 * 60 * 1000);
 
+// ---------- RESET AUTOMATIQUE DE LA PARTIE (générateurs/portes) ----------
+setInterval(() => {
+  CHANNEL_LIST.forEach(ch => {
+    const trial = getTrial(ch);
+    if (trial.gensRepaired > 0 || trial.gatesOpen) {
+      resetTrial(ch);
+      client.say('#' + ch, `🌫️ Nouvelle partie ! Les générateurs sont de nouveau à réparer (0/${GENS_REQUIRED}).`);
+    }
+  });
+}, TRIAL_RESET_INTERVAL_MS);
+
 // ---------- LOTERIE ----------
 function startLottery(ch) {
   lotteriesData[ch] = { participants: [], endsAt: Date.now() + LOTTERY_DURATION };
@@ -321,19 +360,35 @@ client.on('message', (channel, tags, message, self) => {
 
   if (msg === '!generateur') {
     let pts = applyMultipliers(ch, user, gain('moyen'));
-    const bonus = applyItemBonus(ch, user, 'generateur', pts);
-    pts = bonus.pts;
+    const itemBonus = applyItemBonus(ch, user, 'generateur', pts);
+    pts = itemBonus.pts;
+    const perkBonus = applyPerkBonus(ch, user, 'generateur', pts);
+    pts = perkBonus.pts;
     const total = addPoints(ch, user, pts);
-    const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
+    const bonusParts = [itemBonus.used, perkBonus.used].filter(Boolean);
+    const bonusText = bonusParts.length ? ` (grâce à ${bonusParts.join(' + ')} !)` : '';
+
+    const trial = getTrial(ch);
+    let gateText = '';
+    if (!trial.gatesOpen) {
+      trial.gensRepaired = Math.min(trial.gensRepaired + 1, GENS_REQUIRED);
+      if (trial.gensRepaired >= GENS_REQUIRED) {
+        trial.gatesOpen = true;
+        gateText = ` ⚡ Générateurs : ${trial.gensRepaired}/${GENS_REQUIRED} — LES PORTES SONT ALIMENTÉES, !echappe est ouvert !`;
+      } else {
+        gateText = ` (Générateurs : ${trial.gensRepaired}/${GENS_REQUIRED})`;
+      }
+    }
+
     client.say(channel, identityPrefix + pick([
-      `⚙️ ${user} se connecte à un générateur sur ${map}, tandis que ${killer} patrouille au loin. Réparation terminée !${bonusText} +${pts} PdS (total : ${total})`,
-      `⚙️ Sur ${map}, ${user} répare un générateur en retenant son souffle, ${killer} passant à quelques mètres.${bonusText} +${pts} PdS (total : ${total})`,
-      `⚙️ ${user} termine un générateur juste avant que ${killer} n'apparaisse à l'horizon de ${map} !${bonusText} +${pts} PdS (total : ${total})`,
-      `⚙️ ${survivor} aide ${user} à finir ce générateur de ${map} en un temps record.${bonusText} +${pts} PdS (total : ${total})`,
-      `⚙️ ${user} sursaute à chaque bruit sur ${map}, mais le générateur crache enfin ses dernières étincelles.${bonusText} +${pts} PdS (total : ${total})`,
-      `⚙️ Concentré malgré les cris au loin, ${user} boucle la réparation sur ${map}.${bonusText} +${pts} PdS (total : ${total})`,
-      `⚙️ ${user} et ${survivor} se relaient sur ce générateur de ${map}, ${killer} rôdant sans les voir.${bonusText} +${pts} PdS (total : ${total})`,
-      `⚙️ Un bruit de terreur retentit au loin sur ${map}, mais ${user} garde son sang-froid et termine le générateur.${bonusText} +${pts} PdS (total : ${total})`,
+      `⚙️ ${user} se connecte à un générateur sur ${map}, tandis que ${killer} patrouille au loin. Réparation terminée !${bonusText} +${pts} PdS (total : ${total})${gateText}`,
+      `⚙️ Sur ${map}, ${user} répare un générateur en retenant son souffle, ${killer} passant à quelques mètres.${bonusText} +${pts} PdS (total : ${total})${gateText}`,
+      `⚙️ ${user} termine un générateur juste avant que ${killer} n'apparaisse à l'horizon de ${map} !${bonusText} +${pts} PdS (total : ${total})${gateText}`,
+      `⚙️ ${survivor} aide ${user} à finir ce générateur de ${map} en un temps record.${bonusText} +${pts} PdS (total : ${total})${gateText}`,
+      `⚙️ ${user} sursaute à chaque bruit sur ${map}, mais le générateur crache enfin ses dernières étincelles.${bonusText} +${pts} PdS (total : ${total})${gateText}`,
+      `⚙️ Concentré malgré les cris au loin, ${user} boucle la réparation sur ${map}.${bonusText} +${pts} PdS (total : ${total})${gateText}`,
+      `⚙️ ${user} et ${survivor} se relaient sur ce générateur de ${map}, ${killer} rôdant sans les voir.${bonusText} +${pts} PdS (total : ${total})${gateText}`,
+      `⚙️ Un bruit de terreur retentit au loin sur ${map}, mais ${user} garde son sang-froid et termine le générateur.${bonusText} +${pts} PdS (total : ${total})${gateText}`,
     ]));
   }
 
@@ -355,10 +410,13 @@ client.on('message', (channel, tags, message, self) => {
 
   else if (msg === '!totem') {
     let pts = applyMultipliers(ch, user, gain('moyen'));
-    const bonus = applyItemBonus(ch, user, 'totem', pts);
-    pts = bonus.pts;
+    const itemBonus = applyItemBonus(ch, user, 'totem', pts);
+    pts = itemBonus.pts;
+    const perkBonus = applyPerkBonus(ch, user, 'totem', pts);
+    pts = perkBonus.pts;
     const total = addPoints(ch, user, pts);
-    const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
+    const bonusParts = [itemBonus.used, perkBonus.used].filter(Boolean);
+    const bonusText = bonusParts.length ? ` (grâce à ${bonusParts.join(' + ')} !)` : '';
     client.say(channel, identityPrefix + pick([
       `🕯️ ${user} repère un totem hexagonal maudit sur ${map} et l'éteint d'un geste sûr.${bonusText} +${pts} PdS (total : ${total})`,
       `🕯️ Malgré la malédiction de ${killer}, ${user} nettoie un totem sur ${map}.${bonusText} +${pts} PdS (total : ${total})`,
@@ -372,10 +430,13 @@ client.on('message', (channel, tags, message, self) => {
     const roll = rand(1, 100);
     if (roll > 25) {
       let pts = applyMultipliers(ch, user, gain('difficile'));
-      const bonus = applyItemBonus(ch, user, 'chase', pts);
-      pts = bonus.pts;
+      const itemBonus = applyItemBonus(ch, user, 'chase', pts);
+      pts = itemBonus.pts;
+      const perkBonus = applyPerkBonus(ch, user, 'chase', pts);
+      pts = perkBonus.pts;
       const total = addPoints(ch, user, pts);
-      const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
+      const bonusParts = [itemBonus.used, perkBonus.used].filter(Boolean);
+      const bonusText = bonusParts.length ? ` (grâce à ${bonusParts.join(' + ')} !)` : '';
       client.say(channel, identityPrefix + pick([
         `🏃 ${user} est pris en chasse par ${killer} sur ${map}... et sème son poursuivant !${bonusText} +${pts} PdS (total : ${total})`,
         `🏃 ${killer} charge ${user} sur ${map}, mais un juke bien placé sauve la mise !${bonusText} +${pts} PdS (total : ${total})`,
@@ -449,23 +510,27 @@ client.on('message', (channel, tags, message, self) => {
     const parts = message.trim().split(' ');
     if (parts.length < 2) return;
     const target = parts[1].replace('@', '');
-    if (target.toLowerCase() === user.toLowerCase()) {
-      client.say(channel, `💉 ${user}, tu ne peux pas te soigner toi-même ! Demande de l'aide à un autre survivant.`);
+    if (target.toLowerCase() === user.toLowerCase() && !hasSelfHealPerk(ch, user)) {
+      client.say(channel, `💉 ${user}, tu ne peux pas te soigner toi-même ! Demande de l'aide à un autre survivant (ou trouve le perk Auto-Traitement).`);
       return;
     }
     if (isBlessed(ch, target)) {
       let pts = applyMultipliers(ch, user, gain('facile'));
-      const bonus = applyItemBonus(ch, user, 'soigner', pts);
-      pts = bonus.pts;
+      const itemBonus = applyItemBonus(ch, user, 'soigner', pts);
+      pts = itemBonus.pts;
+      const perkBonus = applyPerkBonus(ch, user, 'soigner', pts);
+      pts = perkBonus.pts;
       addPoints(ch, user, pts);
       const total = addPoints(ch, target, pts);
       healUser(ch, target);
-      const bonusText = bonus.used ? ` (grâce à ${bonus.used} de ${user} !)` : '';
+      const bonusParts = [itemBonus.used, perkBonus.used].filter(Boolean);
+      const bonusText = bonusParts.length ? ` (grâce à ${bonusParts.join(' + ')} de ${user} !)` : '';
+      const selfText = target.toLowerCase() === user.toLowerCase() ? ' (auto-soin grâce à Auto-Traitement !)' : '';
       client.say(channel, identityPrefix + pick([
-        `💉 ${user} soigne ${target}, blessé par ${killer} sur ${map}.${bonusText} Les deux gagnent +${pts} PdS !`,
-        `💉 À l'abri des regards de ${killer}, ${user} recoud les blessures de ${target} sur ${map}.${bonusText} +${pts} PdS chacun !`,
-        `💉 ${user} presse une compresse sur la plaie de ${target}, ${killer} n'étant jamais loin sur ${map}.${bonusText} +${pts} PdS chacun !`,
-        `💉 Dos à dos derrière un mur de ${map}, ${user} soigne ${target} en silence.${bonusText} +${pts} PdS chacun !`,
+        `💉 ${user} soigne ${target}, blessé par ${killer} sur ${map}.${bonusText}${selfText} Les deux gagnent +${pts} PdS !`,
+        `💉 À l'abri des regards de ${killer}, ${user} recoud les blessures de ${target} sur ${map}.${bonusText}${selfText} +${pts} PdS chacun !`,
+        `💉 ${user} presse une compresse sur la plaie de ${target}, ${killer} n'étant jamais loin sur ${map}.${bonusText}${selfText} +${pts} PdS chacun !`,
+        `💉 Dos à dos derrière un mur de ${map}, ${user} soigne ${target} en silence.${bonusText}${selfText} +${pts} PdS chacun !`,
       ]));
     } else {
       const pts = applyMultipliers(ch, user, gain('tresFacile'));
@@ -481,10 +546,13 @@ client.on('message', (channel, tags, message, self) => {
     else if (roll > 30) { pts = gain('moyen'); result = 'Skill check réussi'; }
     else { pts = -loss('petite'); result = 'Skill check raté, tu es blessé...'; setBlessed(ch, user); }
     pts = applyMultipliers(ch, user, pts);
-    const bonus = applyItemBonus(ch, user, 'skillcheck', pts);
-    pts = bonus.pts;
+    const itemBonus = applyItemBonus(ch, user, 'skillcheck', pts);
+    pts = itemBonus.pts;
+    const perkBonus = applyPerkBonus(ch, user, 'skillcheck', pts);
+    pts = perkBonus.pts;
     const total = addPoints(ch, user, pts);
-    const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
+    const bonusParts = [itemBonus.used, perkBonus.used].filter(Boolean);
+    const bonusText = bonusParts.length ? ` (grâce à ${bonusParts.join(' + ')} !)` : '';
     client.say(channel, identityPrefix + `🔧 ${user} tente un skill check sur ${map} face à ${killer} : ${result}${bonusText} ${pts >= 0 ? '+' : ''}${pts} PdS (total : ${total})`);
   }
 
@@ -495,10 +563,13 @@ client.on('message', (channel, tags, message, self) => {
     else if (roll > 50) { pts = gain('difficile'); result = 'QTE réussi'; }
     else { pts = -loss('moyenne'); result = "QTE raté, tu es blessé..."; setBlessed(ch, user); }
     pts = applyMultipliers(ch, user, pts);
-    const bonus = applyItemBonus(ch, user, 'qte', pts);
-    pts = bonus.pts;
+    const itemBonus = applyItemBonus(ch, user, 'qte', pts);
+    pts = itemBonus.pts;
+    const perkBonus = applyPerkBonus(ch, user, 'qte', pts);
+    pts = perkBonus.pts;
     const total = addPoints(ch, user, pts);
-    const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
+    const bonusParts = [itemBonus.used, perkBonus.used].filter(Boolean);
+    const bonusText = bonusParts.length ? ` (grâce à ${bonusParts.join(' + ')} !)` : '';
     client.say(channel, identityPrefix + `⚡ ${user} déclenche un QTE d'urgence face à ${killer} : ${result}${bonusText} ${pts >= 0 ? '+' : ''}${pts} PdS (total : ${total})`);
   }
 
@@ -507,12 +578,15 @@ client.on('message', (channel, tags, message, self) => {
     const item = pick(ITEMS);
     maybeUpdateBestRarity(ch, user, rarity);
     setItem(ch, user, item);
-    const pts = applyMultipliers(ch, user, Math.round(gain('moyen') * rarity.mult));
+    let pts = applyMultipliers(ch, user, Math.round(gain('moyen') * rarity.mult));
+    const perkBonus = applyPerkBonus(ch, user, 'objet', pts);
+    pts = perkBonus.pts;
     const total = addPoints(ch, user, pts);
+    const bonusText = perkBonus.used ? ` (grâce à ${perkBonus.used} !)` : '';
     client.say(channel, identityPrefix + pick([
-      `🎒 ${user} déniche ${item} de rareté ${rarity.label} sur ${map} ! +${pts} PdS (total : ${total})`,
-      `🎒 Caché sous un tas de débris sur ${map}, ${user} trouve ${item} (${rarity.label}). +${pts} PdS (total : ${total})`,
-      `🎒 ${survivor} indique une cachette à ${user}, qui y récupère ${item} (${rarity.label}) sur ${map}. +${pts} PdS (total : ${total})`,
+      `🎒 ${user} déniche ${item} de rareté ${rarity.label} sur ${map} !${bonusText} +${pts} PdS (total : ${total})`,
+      `🎒 Caché sous un tas de débris sur ${map}, ${user} trouve ${item} (${rarity.label}).${bonusText} +${pts} PdS (total : ${total})`,
+      `🎒 ${survivor} indique une cachette à ${user}, qui y récupère ${item} (${rarity.label}) sur ${map}.${bonusText} +${pts} PdS (total : ${total})`,
     ]));
   }
 
@@ -525,14 +599,21 @@ client.on('message', (channel, tags, message, self) => {
     unhook(ch, user);
     const s = getStats(ch, user); s.campingSubis++; saveStats();
     let lossAmount = loss('grosse');
+    const bonusLabels = [];
     const item = getItem(ch, user);
-    const effect = item ? ITEM_EFFECTS[item] : null;
-    let bonusText = '';
-    if (effect && effect.boostCmd === 'camping' && effect.reducePenalty) {
-      lossAmount = Math.round(lossAmount * (1 - effect.reducePenalty));
+    const itemEffect = item ? ITEM_EFFECTS[item] : null;
+    if (itemEffect && itemEffect.boostCmd === 'camping' && itemEffect.reducePenalty) {
+      lossAmount = Math.round(lossAmount * (1 - itemEffect.reducePenalty));
       clearItem(ch, user);
-      bonusText = ` (${item} a limité les dégâts !)`;
+      bonusLabels.push(item);
     }
+    const perk = getPerk(ch, user);
+    const perkEffect = perk ? PERK_EFFECTS[perk] : null;
+    if (perkEffect && perkEffect.boostCmd === 'camping' && perkEffect.reducePenalty) {
+      lossAmount = Math.round(lossAmount * (1 - perkEffect.reducePenalty));
+      bonusLabels.push(perk);
+    }
+    const bonusText = bonusLabels.length ? ` (${bonusLabels.join(' + ')} a limité les dégâts !)` : '';
     const pts = applyMultipliers(ch, user, -lossAmount);
     const total = addPoints(ch, user, pts);
     client.say(channel, identityPrefix + pick([
@@ -608,6 +689,11 @@ client.on('message', (channel, tags, message, self) => {
   }
 
   else if (msg === '!echappe') {
+    const trial = getTrial(ch);
+    if (!trial.gatesOpen) {
+      client.say(channel, `🚪 ${user}, les portes ne sont pas encore alimentées ! Il reste ${GENS_REQUIRED - trial.gensRepaired} générateur(s) à réparer (!generateur). Tu peux tenter la trappe avec !trappe en attendant.`);
+      return;
+    }
     if (isBlessed(ch, user)) {
       if (hasAutoHealItem(ch, user)) {
         const item = getItem(ch, user);
@@ -621,15 +707,40 @@ client.on('message', (channel, tags, message, self) => {
     }
     const s = getStats(ch, user); s.echappes++; saveStats();
     let pts = applyMultipliers(ch, user, gain('exceptionnel'));
-    const bonus = applyItemBonus(ch, user, 'echappe', pts);
-    pts = bonus.pts;
+    const itemBonus = applyItemBonus(ch, user, 'echappe', pts);
+    pts = itemBonus.pts;
+    const perkBonus = applyPerkBonus(ch, user, 'echappe', pts);
+    pts = perkBonus.pts;
     const total = addPoints(ch, user, pts);
-    const bonusText = bonus.used ? ` (grâce à ${bonus.used} !)` : '';
+    const bonusParts = [itemBonus.used, perkBonus.used].filter(Boolean);
+    const bonusText = bonusParts.length ? ` (grâce à ${bonusParts.join(' + ')} !)` : '';
     client.say(channel, identityPrefix + pick([
       `🚪 ${user} s'échappe par la porte de sortie de ${map}, échappant à ${killer} !${bonusText} JACKPOT +${pts} PdS (total : ${total})`,
       `🚪 Après une partie intense face à ${killer}, ${user} franchit la sortie de ${map} en vie !${bonusText} +${pts} PdS (total : ${total})`,
       `🚪 ${user} et ${survivor} filent ensemble par la sortie de ${map}, laissant ${killer} bredouille !${bonusText} +${pts} PdS (total : ${total})`,
     ]));
+  }
+
+  else if (msg === '!trappe') {
+    const roll = Math.random();
+    if (roll < HATCH_CHANCE) {
+      const s = getStats(ch, user); s.echappes++; saveStats();
+      const pts = applyMultipliers(ch, user, gain('exceptionnel'));
+      const total = addPoints(ch, user, pts);
+      client.say(channel, identityPrefix + pick([
+        `🕳️ ${user} repère la trappe cachée sur ${map} et se faufile dedans avant que ${killer} ne réagisse ! ÉVASION DISCRÈTE +${pts} PdS (total : ${total})`,
+        `🕳️ Un grincement... ${user} trouve la trappe sur ${map} et s'y engouffre juste à temps ! +${pts} PdS (total : ${total})`,
+        `🕳️ ${user} tombe sur la trappe par pur hasard sur ${map}, échappant à ${killer} en silence. +${pts} PdS (total : ${total})`,
+      ]));
+    } else {
+      const pts = applyMultipliers(ch, user, -loss('petite'));
+      const total = addPoints(ch, user, pts);
+      client.say(channel, identityPrefix + pick([
+        `🕳️ ${user} cherche la trappe sur ${map} sans succès, elle doit être ailleurs... ${pts} PdS (total : ${total})`,
+        `🕳️ ${user} entend l'Entité gronder au loin sur ${map}, mais aucune trappe en vue. ${pts} PdS (total : ${total})`,
+        `🕳️ ${user} fouille ${map} en vain, ${killer} n'est pas loin. ${pts} PdS (total : ${total})`,
+      ]));
+    }
   }
 
   else if (msg === '!offrande') {
@@ -655,12 +766,14 @@ client.on('message', (channel, tags, message, self) => {
     const perk = pick(PERKS);
     const rarity = pickRarity();
     maybeUpdateBestRarity(ch, user, rarity);
+    setPerk(ch, user, perk);
     const pts = applyMultipliers(ch, user, Math.round(gain('facile') * rarity.mult));
     const total = addPoints(ch, user, pts);
+    const effectText = PERK_EFFECTS[perk] ? ` (perk équipé, effet actif !)` : '';
     client.say(channel, identityPrefix + pick([
-      `🃏 ${user} tire la perk "${perk}" (${rarity.label}) dans son build ! +${pts} PdS (total : ${total})`,
-      `🃏 ${survivor} inspire ${user}, qui débloque "${perk}" (${rarity.label}). +${pts} PdS (total : ${total})`,
-      `🃏 Une carte de build apparaît devant ${user} : "${perk}" (${rarity.label}) ! +${pts} PdS (total : ${total})`,
+      `🃏 ${user} tire la perk "${perk}" (${rarity.label}) dans son build !${effectText} +${pts} PdS (total : ${total})`,
+      `🃏 ${survivor} inspire ${user}, qui débloque "${perk}" (${rarity.label}).${effectText} +${pts} PdS (total : ${total})`,
+      `🃏 Une carte de build apparaît devant ${user} : "${perk}" (${rarity.label}) !${effectText} +${pts} PdS (total : ${total})`,
     ]));
   }
 
@@ -725,6 +838,15 @@ client.on('message', (channel, tags, message, self) => {
     const total = getTotal(ch, user);
     const t = getTitle(ch, user);
     client.say(channel, `🩸 ${user}${t ? ` [${t}]` : ''}, tu as ${total} Points de Sang.`);
+  }
+
+  else if (msg === '!nouvellepartie') {
+    if (!isModOrBroadcaster(tags)) {
+      client.say(channel, `⛔ ${user}, seuls les modérateurs peuvent relancer une nouvelle partie.`);
+      return;
+    }
+    resetTrial(ch);
+    client.say(channel, `🌫️ ${user} relance une nouvelle partie ! Générateurs à réparer : 0/${GENS_REQUIRED}.`);
   }
 
   else if (msg.startsWith('!forcerevent')) {
@@ -812,9 +934,9 @@ client.on('message', (channel, tags, message, self) => {
 
   else if (msg === '!commandes') {
     const withCd = Object.keys(COOLDOWNS)
-      .filter(c => c !== 'forcerevent')
+      .filter(c => c !== 'forcerevent' && c !== 'nouvellepartie')
       .map(c => `!${c}(${COOLDOWNS[c]}s)`)
       .join(' ');
-    client.say(channel, `📜 ${withCd} !classement !points (mods: !forcerevent)`);
+    client.say(channel, `📜 ${withCd} !classement !points (mods: !forcerevent !nouvellepartie)`);
   }
 });

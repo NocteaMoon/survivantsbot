@@ -164,15 +164,41 @@ const COOLDOWNS = {
   patrouille:     45,
   frappe:         60,
   camper:         60,
+  trappe:         400,
+  nouvellepartie: 30,
 };
 
 const GLOBAL_COOLDOWN = 8;
 const EVENT_CHANCE = 0.06;
 
+// ---------- SYSTÈME DE PARTIE (portes/générateurs/trappe) ----------
+const GENS_REQUIRED = 5;
+const TRIAL_RESET_INTERVAL_MS = 20 * 60 * 1000;
+const HATCH_CHANCE = 0.25;
+
+// ---------- EFFETS DE PERKS (un perk équipé à la fois, reste actif jusqu'au prochain !perk) ----------
+const PERK_EFFECTS = {
+  'Auto-Traitement':            { allowSelfHeal: true },
+  'Sursis':                     { boostCmd: 'camping',    reducePenalty: 0.4 },
+  'Adrénaline':                 { boostCmd: 'echappe',    mult: 1.3 },
+  'Esprit Calme':               { boostCmd: 'chase',      mult: 1.2 },
+  'Fais tes Preuves':           { boostCmd: 'generateur', mult: 1.25 },
+  'Déjà-Vu':                    { boostCmd: 'totem',      mult: 1.25 },
+  'Connaissances en Botanique': { boostCmd: 'soigner',    mult: 1.3 },
+  'Second Souffle':             { boostCmd: 'skillcheck', mult: 1.2 },
+  'Hyperconcentration':         { boostCmd: 'qte',        mult: 1.2 },
+  'Volonté de Fer':             { boostCmd: 'chase',      mult: 1.15 },
+  'Résistance':                 { boostCmd: 'totem',      mult: 1.15 },
+  'Ténacité':                   { boostCmd: 'camping',    reducePenalty: 0.25 },
+  'Souple':                     { boostCmd: 'chase',      mult: 1.2 },
+  'Objet de Fascination':       { boostCmd: 'objet',      mult: 1.2 },
+};
+
 module.exports = {
-  KILLERS, MAPS, SURVIVORS, PERKS, RARITIES, ITEMS, ITEM_EFFECTS, OFFERINGS, EVENTS, RANKS,
+  KILLERS, MAPS, SURVIVORS, PERKS, PERK_EFFECTS, RARITIES, ITEMS, ITEM_EFFECTS, OFFERINGS, EVENTS, RANKS,
   BLEED_PENALTY, CONFRONTATION_STAKE_PERCENT, CONFRONTATION_STAKE_CAP,
   CONFRONTATION_BLESSURE_MALUS, WEEK_RESET_INTERVAL_MS,
   SHOP, LOTTERY_ENTRY_COST, LOTTERY_DURATION,
-  TIERS, LOSS_TIERS, COOLDOWNS, GLOBAL_COOLDOWN, EVENT_CHANCE
+  TIERS, LOSS_TIERS, COOLDOWNS, GLOBAL_COOLDOWN, EVENT_CHANCE,
+  GENS_REQUIRED, TRIAL_RESET_INTERVAL_MS, HATCH_CHANCE
 };

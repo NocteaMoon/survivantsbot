@@ -1,6 +1,6 @@
 require('dotenv').config();
 const tmi = require('tmi.js');
-const fs = require('fs');
+const { Pool } = require('pg');
 const {
   KILLERS, MAPS, SURVIVORS, PERKS, PERK_EFFECTS, RARITIES, ITEMS, ITEM_EFFECTS, OFFERINGS, EVENTS, RANKS,
   BLEED_PENALTY, CONFRONTATION_STAKE_PERCENT, CONFRONTATION_STAKE_CAP,
@@ -15,10 +15,44 @@ const app = express();
 app.get('/', (req, res) => res.send('SurvivantsBot est en ligne 🩸'));
 app.listen(process.env.PORT || 3000, () => console.log('🌐 Serveur web actif'));
 
-// ---------- STOCKAGE ----------
-const POINTS_FILE = './points.json';
-let points = fs.existsSync(POINTS_FILE) ? JSON.parse(fs.readFileSync(POINTS_FILE)) : {};
-function savePoints() { fs.writeFileSync(POINTS_FILE, JSON.stringify(points, null, 2)); }
+// ---------- STOCKAGE (Neon PostgreSQL) ----------
+// Une seule table clé/valeur : chaque "fichier" d'avant devient une ligne JSON dans Neon.
+// Lecture en mémoire comme avant (rapide), écriture envoyée vers Neon en arrière-plan.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
+
+async function ensureStorageTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS bot_storage (
+      key TEXT PRIMARY KEY,
+      data JSONB NOT NULL
+    );
+  `);
+}
+
+async function loadFromDb(key, fallback) {
+  try {
+    const res = await pool.query('SELECT data FROM bot_storage WHERE key = $1', [key]);
+    return res.rows.length > 0 ? res.rows[0].data : fallback;
+  } catch (err) {
+    console.error(`⚠️ Erreur de chargement Neon (${key}) :`, err.message);
+    return fallback;
+  }
+}
+
+// Fire-and-forget : ne bloque jamais la réponse du bot, juste loggé si ça échoue.
+function saveToDb(key, value) {
+  pool.query(
+    `INSERT INTO bot_storage (key, data) VALUES ($1, $2)
+     ON CONFLICT (key) DO UPDATE SET data = $2`,
+    [key, JSON.stringify(value)]
+  ).catch(err => console.error(`⚠️ Erreur de sauvegarde Neon (${key}) :`, err.message));
+}
+
+let points = {};
+function savePoints() { saveToDb('points', points); }
 function addPoints(channel, user, amount) {
   if (!points[channel]) points[channel] = {};
   if (!points[channel][user]) points[channel][user] = 0;
@@ -29,9 +63,8 @@ function addPoints(channel, user, amount) {
 }
 function getTotal(channel, user) { return (points[channel] && points[channel][user]) || 0; }
 
-const STATS_FILE = './stats.json';
-let stats = fs.existsSync(STATS_FILE) ? JSON.parse(fs.readFileSync(STATS_FILE)) : {};
-function saveStats() { fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2)); }
+let stats = {};
+function saveStats() { saveToDb('stats', stats); }
 function getStats(ch, user) {
   if (!stats[ch]) stats[ch] = {};
   if (!stats[ch][user]) stats[ch][user] = { echappes: 0, campingSubis: 0, meilleureRareteLabel: null, meilleureRareteWeight: undefined, duelsGagnes: 0 };
@@ -46,22 +79,29 @@ function maybeUpdateBestRarity(ch, user, rarity) {
   }
 }
 
-const ROLES_FILE = './roles.json';
-let roles = fs.existsSync(ROLES_FILE) ? JSON.parse(fs.readFileSync(ROLES_FILE)) : {};
-function saveRoles() { fs.writeFileSync(ROLES_FILE, JSON.stringify(roles, null, 2)); }
+let roles = {};
+function saveRoles() { saveToDb('roles', roles); }
 
-const TITLES_FILE = './titles.json';
-let titles = fs.existsSync(TITLES_FILE) ? JSON.parse(fs.readFileSync(TITLES_FILE)) : {};
-function saveTitles() { fs.writeFileSync(TITLES_FILE, JSON.stringify(titles, null, 2)); }
+let titles = {};
+function saveTitles() { saveToDb('titles', titles); }
 function getTitle(ch, user) { return titles[`${ch}-${user}`] || null; }
 
-const LEADERBOARD_META_FILE = './leaderboardMeta.json';
-let leaderboardMeta = fs.existsSync(LEADERBOARD_META_FILE) ? JSON.parse(fs.readFileSync(LEADERBOARD_META_FILE)) : {};
-function saveLeaderboardMeta() { fs.writeFileSync(LEADERBOARD_META_FILE, JSON.stringify(leaderboardMeta, null, 2)); }
+let leaderboardMeta = {};
+function saveLeaderboardMeta() { saveToDb('leaderboardMeta', leaderboardMeta); }
 
-const LOTTERIES_FILE = './lotteries.json';
-let lotteriesData = fs.existsSync(LOTTERIES_FILE) ? JSON.parse(fs.readFileSync(LOTTERIES_FILE)) : {};
-function saveLotteries() { fs.writeFileSync(LOTTERIES_FILE, JSON.stringify(lotteriesData, null, 2)); }
+let lotteriesData = {};
+function saveLotteries() { saveToDb('lotteries', lotteriesData); }
+
+// Charge toutes les données depuis Neon avant de démarrer le bot.
+async function loadAllFromDb() {
+  points = await loadFromDb('points', {});
+  stats = await loadFromDb('stats', {});
+  roles = await loadFromDb('roles', {});
+  titles = await loadFromDb('titles', {});
+  leaderboardMeta = await loadFromDb('leaderboardMeta', {});
+  lotteriesData = await loadFromDb('lotteries', {});
+  console.log('✅ Données chargées depuis Neon');
+}
 
 // ---------- HELPERS ----------
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -252,7 +292,12 @@ const client = new tmi.Client({
   identity: { username: process.env.TWITCH_BOT_USERNAME, password: process.env.TWITCH_TOKEN },
   channels: CHANNEL_LIST
 });
-client.connect();
+(async () => {
+  await ensureStorageTable();
+  await loadAllFromDb();
+  client.connect();
+})();
+
 client.on('connected', (addr, port) => {
   console.log(`✅ SurvivantsBot connecté à ${addr}:${port}`);
   checkWeeklyResets();
